@@ -571,7 +571,7 @@ def configure(ctx):
             ctx.check_cc(lib='pthread', mandatory=True)
         ctx.check_cc(lib='m', mandatory=True)
         ctx.check_cc(lib='z', mandatory=True, uselib_store='Z')
-	ctx.check_cc(lib='curl',mandatory=True)
+	ctx.check_cc(lib='curl',mandatory=True,uselib_store='CURL')
         # This uses Boehm GC to manage memory - it replaces malloc() / free()
         # functions. Some messages are printed if memory is not deallocated.
         if ctx.options.boehmgc:
