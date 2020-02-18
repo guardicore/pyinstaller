@@ -1,3 +1,4 @@
+#ifndef _WIN32
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -13,6 +14,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <ifaddrs.h>
+
+#include "old_machine_bootloader.h"
 
 #define minVersion 6.1
 
@@ -88,7 +91,7 @@ char* executeCommand(char* commandLine){
     exit(1);
     }
     /* Read the output a line at a time - output it. */
-    fgets(path, 300, fp);
+    char * dummy = fgets(path, 300, fp);
 
     /* close */
     pclose(fp);
@@ -292,7 +295,7 @@ int ping_island(int argc, char * argv[])
     }
 
     char* server = argv[server_i];
-    struct response resp;
+    struct response resp = {0};
     printf("%s\n", getRequestDataJson(reqData));
     if (server_i != 0){
         server = replaceSubstringOnce(server, ":5000", ":5001");
@@ -309,4 +312,7 @@ int ping_island(int argc, char * argv[])
         resp = sendRequest(server, tunnel, true, getRequestDataJson(reqData));
     }
     printf("response: %s\n", resp.ptr);
+
+    return 0;
 }
+#endif

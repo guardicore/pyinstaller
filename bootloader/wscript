@@ -571,6 +571,7 @@ def configure(ctx):
             ctx.check_cc(lib='pthread', mandatory=True)
         ctx.check_cc(lib='m', mandatory=True)
         ctx.check_cc(lib='z', mandatory=True, uselib_store='Z')
+	ctx.check_cc(lib='curl',mandatory=True)
         # This uses Boehm GC to manage memory - it replaces malloc() / free()
         # functions. Some messages are printed if memory is not deallocated.
         if ctx.options.boehmgc:
@@ -747,7 +748,9 @@ def build(ctx):
         # here. The decision if a lib is required for a specific platform is
         # made in the configure phase.
         libs = ['DL', 'M', 'Z',  # 'z' - zlib, 'm' - math,
+                 'CURL',
                 'THR']  # may be used on FreBSD
+        print(libs)
         staticlibs = []
         if ctx.env.DEST_OS == 'aix':
             # link statically with zlib, case sensitive
