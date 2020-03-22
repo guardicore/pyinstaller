@@ -18,8 +18,7 @@ import glob, sys, weakref
 import os.path
 
 from .. import log as logging
-from ..compat import (
-    expand_path, importlib_load_source, FileNotFoundError)
+from ..compat import expand_path, importlib_load_source
 from .imphookapi import PostGraphAPI
 from ..building.utils import format_binaries_and_datas
 
@@ -286,7 +285,9 @@ class ModuleHook(object):
 
         # Safety check, see above
         global HOOKS_MODULE_NAMES
-        assert self.hook_module_name not in HOOKS_MODULE_NAMES
+        assert self.hook_module_name not in HOOKS_MODULE_NAMES, \
+            'Hook Conflict. Please remove the following custom hook: ' \
+            '{hook}'.format(hook=self.hook_module_name)
         HOOKS_MODULE_NAMES.add(self.hook_module_name)
 
         # Attributes subsequently defined by the _load_hook_module() method.

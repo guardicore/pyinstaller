@@ -17,7 +17,7 @@ import sys
 import textwrap
 
 from ...compat import base_prefix, exec_command_stdout, exec_python, \
-    is_darwin, is_py2, is_py3, is_venv, string_types, open_file, \
+    is_darwin, is_venv, string_types, open_file, \
     EXTENSION_SUFFIXES, ALL_SUFFIXES
 from ... import HOMEPATH
 from ... import log as logging
@@ -57,13 +57,6 @@ def __exec_python_cmd(cmd, env=None):
     # Some functions use some PyInstaller code in subprocess so add
     # PyInstaller HOMEPATH to sys.path too.
     pp = os.pathsep.join(CONF['pathex'] + [HOMEPATH])
-
-    # On Python 2, `os.environ` may only contain bytes.
-    # Encode unicode filenames using FS encoding.
-    # TODO: `os.environ` wrapper that encodes automatically?
-    if is_py2:
-        if isinstance(pp, unicode):
-            pp = pp.encode(sys.getfilesystemencoding())
 
     # PYTHONPATH might be already defined in the 'env' argument or in
     # the original 'os.environ'. Prepend it.
@@ -182,9 +175,7 @@ def get_homebrew_path(formula=''):
     except subprocess.CalledProcessError:
         logger.debug('homebrew formula "%s" not installed' % formula)
     if path:
-        if is_py3:
-            path = path.decode('utf8')  # OS X filenames are UTF-8
-        return path
+        return path.decode('utf8')  # OS X filenames are UTF-8
     else:
         return None
 
@@ -723,6 +714,13 @@ def collect_data_files(package, include_py_files=False, subdir=None):
     pkg_base, pkg_dir = get_package_paths(package)
     if subdir:
         pkg_dir = os.path.join(pkg_dir, subdir)
+    pkg_base = os.path.dirname(pkg_base)
+    # Ensure `pkg_base` ends with a single slash
+    # Subtle difference on Windows: In some cases `dirname` keeps the
+    # trailing slash, e.g. dirname("//aaa/bbb/"), see issue #4707.
+    if not pkg_base.endswith(os.sep):
+        pkg_base += os.sep
+
     # Walk through all file in the given package, looking for data files.
     datas = []
     for dirpath, dirnames, files in os.walk(pkg_dir):
@@ -733,8 +731,7 @@ def collect_data_files(package, include_py_files=False, subdir=None):
                 # (/abs/path/to/source/mod/submod/file.dat,
                 #  mod/submod)
                 source = os.path.join(dirpath, f)
-                dest = remove_prefix(dirpath,
-                                     os.path.dirname(pkg_base) + os.sep)
+                dest = remove_prefix(dirpath, pkg_base)
                 datas.append((source, dest))
 
     logger.debug("collect_data_files - Found files: %s", datas)
@@ -755,8 +752,14 @@ def collect_system_data_files(path, destdir=None, include_py_files=False):
         raise ValueError
     # The call to ``remove_prefix`` below assumes a path separate of ``os.sep``,
     # which may not be true on Windows; Windows allows Linux path separators in
-    # filenames. Fix this.
+    # filenames. Fix this by normalizing the path.
     path = os.path.normpath(path)
+    path = os.path.dirname(path)
+    # Ensure `path` ends with a single slash
+    # Subtle difference on Windows: In some cases `dirname` keeps the
+    # trailing slash, e.g. dirname("//aaa/bbb/"), see issue #4707.
+    if not path.endswith(os.sep):
+        path += os.sep
 
     # Walk through all file in the given package, looking for data files.
     datas = []
@@ -768,8 +771,7 @@ def collect_system_data_files(path, destdir=None, include_py_files=False):
                 # (/abs/path/to/source/mod/submod/file.dat,
                 #  mod/submod/destdir)
                 source = os.path.join(dirpath, f)
-                dest = remove_prefix(dirpath,
-                                     os.path.dirname(path) + os.sep)
+                dest = remove_prefix(dirpath, path)
                 if destdir is not None:
                     dest = os.path.join(destdir, dest)
                 datas.append((source, dest))

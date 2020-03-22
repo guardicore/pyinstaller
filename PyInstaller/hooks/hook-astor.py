@@ -9,11 +9,6 @@
 # SPDX-License-Identifier: (GPL-2.0-or-later WITH Bootloader-exception)
 #-----------------------------------------------------------------------------
 
+from PyInstaller.utils.hooks import collect_data_files
 
-import sys
-
-def pre_find_module_path(hook_api):
-    # Forbid imports in the port_v3 directory under Python 2
-    # The code wouldn't import and would crash the build process.
-    if sys.hexversion < 0x03000000:
-        hook_api.search_dirs = []
+datas = collect_data_files('astor')
