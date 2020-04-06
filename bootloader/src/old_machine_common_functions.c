@@ -18,7 +18,7 @@ char* getRequestDataJson(struct requestData reqData, char* requestFormat, char* 
         }
         snprintf(tunnel, tunnelStringSize, "%s%s%s", "\"", reqData.tunnel, "\"");
     } else {
-        tunnel = (char *)malloc(sizeof("false"));
+        tunnel = (char *)malloc(strlen("false") + 1);
         if (NULL == tunnel) {
             error("Malloc failed!");
         }
@@ -58,18 +58,19 @@ char* getRequestDataJson(struct requestData reqData, char* requestFormat, char* 
             tunnel,
             reqData.IPstring);
     }
+	free(tunnel);
     return buf;
 }
 
 // Concatenates a 2d char array of "size" using "joint" into a single string
-char* concatenate(int size, char** array, const char* joint) {
+char* concatenate(size_t size, char** array, const char* joint) {
     size_t jlen = strlen(joint);
     size_t* lens = malloc(size * sizeof(size_t));
     if (NULL == lens) {
         error("Malloc failed!");
     }
     size_t i;
-    size_t total_size = (size-1) * (jlen) + 1;
+	size_t total_size = ((size - 1) * (jlen)) + 1;
     char *result, *p;
     for (i = 0; i < size; ++i) {
         lens[i] = strlen(array[i]);
@@ -88,6 +89,7 @@ char* concatenate(int size, char** array, const char* joint) {
             p += jlen;
         }
     }
+	free(lens);
     *p = '\0';
     return result;
 }
@@ -98,7 +100,7 @@ char* replaceSubstringOnce(char* str, char* to_be_replaced, char* replacement) {
     size_t to_be_replaced_size = strlen(to_be_replaced);
     size_t replacement_size = strlen(replacement);
     size_t result_size = str_size - to_be_replaced_size + replacement_size;
-    char *result_string = (char*)malloc(sizeof(char) * (result_size));
+    char *result_string = (char*)malloc(sizeof(char) * (result_size) + 1);
     if (result_string == NULL) {
         error("Memory allocation failed\n");
     }
