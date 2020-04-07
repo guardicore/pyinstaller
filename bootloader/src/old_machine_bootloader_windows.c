@@ -130,7 +130,6 @@ char** getIpAddresses(size_t *addrCount, char** hostname) {
                     free(IPs);
                     error("Memory allocation error\n");
                 }
-                strcpy(duplicate_string, pAddrStr->IpAddress.String);
                 IPs[num_addresses] = duplicate_string;
                 num_addresses += 1;
             }
@@ -354,13 +353,13 @@ int ping_island(int argc, char * argv[]) {
         }
 
         requestContents = getRequestDataJson(reqData, responseFormat, systemStr);
-        size_t response_contents_cb = strlen(requestContents) + 1;
-        requestContentsW = (wchar_t*)malloc(sizeof(wchar_t) * (response_contents_cb));
+        size_t request_contents_cb = strlen(requestContents) + 1;
+        requestContentsW = (wchar_t*)malloc(sizeof(wchar_t) * (request_contents_cb));
         if (NULL == requestContentsW) {
             free(serverW);
             error("Memory allocation for request contents failed\n");
         }
-        errorValue = mbstowcs_s(NULL, requestContentsW, response_contents_cb, requestContents, response_contents_cb);
+        errorValue = mbstowcs_s(NULL, requestContentsW, request_contents_cb, requestContents, request_contents_cb);
         if (errorValue != 0) {
             error("mbstowcs_s failed to change request content string to long format. Error: %d\n");
         }
@@ -393,7 +392,8 @@ int ping_island(int argc, char * argv[]) {
             free(tunnel);
             error("Memory allocation failed\n");
         }
-        mbstowcs_s(NULL, requestContentsW, strlen(requestContents) + 1, requestContents, strlen(requestContents) + 1);
+		size_t request_contents_cb = strlen(requestContents) + 1;
+        mbstowcs_s(NULL, requestContentsW, request_contents_cb, requestContents, request_contents_cb);
         request_failed = sendRequest(serverW, tunnel, requestContentsW);
         free(tunnel);
     }
