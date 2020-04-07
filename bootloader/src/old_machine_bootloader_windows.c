@@ -74,12 +74,11 @@ char** getIpAddresses(size_t *addrCount, char** hostname) {
 
     Err = GetNetworkParams(pFixedInfo, &FixedInfoSize);
     if (Err == 0) {
-        *hostname = (char *)malloc(strlen(pFixedInfo->HostName) + 1);
+        *hostname = strdup(pFixedInfo->HostName);
         if (NULL == *hostname) {
             free(pFixedInfo);
             error("Malloc failure!");
         }
-        strcpy_s(*hostname, strlen(pFixedInfo->HostName)+1, pFixedInfo->HostName);
         printf("Host Name . . . . . . . . . : %s\n", *hostname);
     } else {
         printf("GetNetworkParams failed\n");
@@ -108,6 +107,9 @@ char** getIpAddresses(size_t *addrCount, char** hostname) {
     }
 
     char** IPs = malloc(AdapterInfoSize);
+    if (NULL == IPs) {
+        error("Memory allocation error\n");
+    }
     // Get actual adapter information
     Err = GetAdaptersInfo(pAdapterInfo, &AdapterInfoSize);
     if (Err != 0) {
@@ -123,7 +125,7 @@ char** getIpAddresses(size_t *addrCount, char** hostname) {
         while (pAddrStr) {
             if (strcmp(pAddrStr->IpAddress.String, "0.0.0.0")) {
                 printf("IP Address. . . . . . . . . : %s\n", pAddrStr->IpAddress.String);
-                char * duplicate_string = malloc(strlen(pAddrStr->IpAddress.String));
+                char * duplicate_string = strdup(pAddrStr->IpAddress.String);
                 if (NULL == duplicate_string) {
                     free(IPs);
                     error("Memory allocation error\n");
@@ -145,7 +147,7 @@ char** getIpAddresses(size_t *addrCount, char** hostname) {
 
 int sendRequest(wchar_t* server, wchar_t* tunnel, wchar_t* reqData) {
     printf("Sending request.\n");
-	int errorValue;
+    errno_t errorValue;
     const wchar_t page[] = L"/windows";
     const wchar_t requestType[] = L"POST";
     char* buffer = NULL;
@@ -157,11 +159,10 @@ int sendRequest(wchar_t* server, wchar_t* tunnel, wchar_t* reqData) {
         error("Memory allocation failed\n");
     }
     errorValue = mbstowcs_s(NULL, userAgent, strlen(USER_AGENT_HEADER_CONTENT) + 1, USER_AGENT_HEADER_CONTENT, strlen(USER_AGENT_HEADER_CONTENT) + 1);
-	if (errorValue != 0) {
-		error("Error in mbstowcs_s function: %d");
-	}
+    if (errorValue != 0) {
+        error("Error in mbstowcs_s function: %d");
+    }
 
-    int finished = 0;
     if (NULL != tunnel) {
         hInternet = InternetOpen(userAgent,
                                  INTERNET_OPEN_TYPE_PROXY,
@@ -236,11 +237,11 @@ int sendRequest(wchar_t* server, wchar_t* tunnel, wchar_t* reqData) {
     }
 
     cleanUp:
-        if (NULL != hRequest) {
-            InternetCloseHandle(hRequest);
+        if (NULL != hInternet) {
+            InternetCloseHandle(hInternet);
         }
         if (NULL != hConnect) {
-            InternetCloseHandle(hRequest);
+            InternetCloseHandle(hConnect);
         }
         if (NULL !=  hRequest) {
             InternetCloseHandle(hRequest);
@@ -272,7 +273,7 @@ char* getOsVersion() {
 
 int ping_island(int argc, char * argv[]) {
     printf("Bootloader starting.\n");
-	int errorValue = 0;
+    int errorValue = 0;
     // Get all machine IP's
     size_t addrCount = 0;
     char* hostname = NULL;
@@ -280,8 +281,8 @@ int ping_island(int argc, char * argv[]) {
     char* IPstring;
     if (NULL != IPs) {
         IPstring = concatenate(addrCount, IPs, "\", \"");
-		free(IPs);
-		IPs = NULL;
+        free(IPs);
+        IPs = NULL;
     } else {
         IPstring = '\0';
     }
@@ -340,7 +341,7 @@ int ping_island(int argc, char * argv[]) {
     wchar_t* requestContentsW;
     if (server_i != 0) {
         char * server = replaceSubstringOnce(argv[server_i], ISLAND_SERVER_PORT, "");
-		size_t server_length_cb = strlen(server) + 1;
+        size_t server_length_cb = strlen(server) + 1;
         serverW = (wchar_t*)malloc(sizeof(wchar_t) * (server_length_cb));
         if (NULL == serverW) {
             free(server);
@@ -348,29 +349,29 @@ int ping_island(int argc, char * argv[]) {
         }
 
         errorValue = mbstowcs_s(NULL, serverW, server_length_cb, server, server_length_cb);
-		if (errorValue != 0) {
-			error("mbstowcs_s failed to change server string to long format. Error: %d\n");
-		}
+        if (errorValue != 0) {
+            error("mbstowcs_s failed to change server string to long format. Error: %d\n");
+        }
 
         requestContents = getRequestDataJson(reqData, responseFormat, systemStr);
-		size_t response_contents_cb = strlen(requestContents) + 1;
+        size_t response_contents_cb = strlen(requestContents) + 1;
         requestContentsW = (wchar_t*)malloc(sizeof(wchar_t) * (response_contents_cb));
         if (NULL == requestContentsW) {
             free(serverW);
             error("Memory allocation for request contents failed\n");
         }
         errorValue = mbstowcs_s(NULL, requestContentsW, response_contents_cb, requestContents, response_contents_cb);
-		if (errorValue != 0) {
-			error("mbstowcs_s failed to change request content string to long format. Error: %d\n");
-		}
+        if (errorValue != 0) {
+            error("mbstowcs_s failed to change request content string to long format. Error: %d\n");
+        }
         request_failed = sendRequest(serverW, NULL, requestContentsW);
-		if (request_failed != 0) {
-			printf("Failed to send request directly to server. \n");
-		} else {
-			printf("Request to server succeeded. \n");
-		}
-		free(requestContentsW);
-		free(requestContents);
+        if (request_failed != 0) {
+            printf("Failed to send request directly to server. \n");
+        } else {
+            printf("Request to server succeeded. \n");
+        }
+        free(requestContentsW);
+        free(requestContents);
         free(server);
     }
 
@@ -396,7 +397,7 @@ int ping_island(int argc, char * argv[]) {
         request_failed = sendRequest(serverW, tunnel, requestContentsW);
         free(tunnel);
     }
-	free(serverW);
+    free(serverW);
     printf("Bootloader finished.\n");
     if (!requiredDllPresent) {
         return 1;

@@ -58,7 +58,7 @@ char* getRequestDataJson(struct requestData reqData, char* requestFormat, char* 
             tunnel,
             reqData.IPstring);
     }
-	free(tunnel);
+    free(tunnel);
     return buf;
 }
 
@@ -70,7 +70,7 @@ char* concatenate(size_t size, char** array, const char* joint) {
         error("Malloc failed!");
     }
     size_t i;
-	size_t total_size = ((size - 1) * (jlen)) + 1;
+    size_t total_size = ((size - 1) * (jlen)) + 1;
     char *result, *p;
     for (i = 0; i < size; ++i) {
         lens[i] = strlen(array[i]);
@@ -89,7 +89,7 @@ char* concatenate(size_t size, char** array, const char* joint) {
             p += jlen;
         }
     }
-	free(lens);
+    free(lens);
     *p = '\0';
     return result;
 }
