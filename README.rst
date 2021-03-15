@@ -1,3 +1,36 @@
+Modified pyinstaller fork
+=========================
+
+This is a pyinstaller fork, modified to suit Infection Monkey scanner.
+If you don't develop Infection Monkey please use the official pyinstaller repository.
+Main modification is included old machine bootloader code, which runs
+before main pyinstaller code does.
+
+Build linux
+-----------
+Make sure you have docker installed on your machine then execute
+
+      sudo ./build_bootloaders_linux.sh
+
+After bootloader is built you have to replace default pyinstaller bootloader with it if pyinstaller was already installed.
+
+      cp ./bootloader/build/release/run /home/<USERNAME>/.local/lib/python3.7/site-packages/PyInstaller/bootloader/Linux-64bit/run
+
+
+Build windows
+-------------
+Please refer to the pre requisites mentioned in the `PyInstaller documentation <https://pyinstaller.readthedocs.io/en/latest/bootloader-building.html#build-using-visual-studio-c>`_
+Afterwards, run the following script
+
+      powershell .\\build_bootloaders_windows.ps1
+
+When bootloader is built you probably want to replace your default bootloader with it:
+move all .exe files from
+      `.\\pyinstaller\\PyInstaller\\bootloader\\Windows-64bit`
+to
+      `C:\\Users\\<USERNAME>\\AppData\\Local\\Programs\\Python\\Python37\\Lib\\site-packages\\PyInstaller\\bootloader\\Windows-64bit\\run.exe`
+
+
 PyInstaller Overview
 ====================
 
@@ -62,7 +95,7 @@ PyInstaller is available on PyPI. You can install it through `pip`::
 Requirements and Tested Platforms
 ------------------------------------
 
-- Python: 
+- Python:
 
  - 3.5-3.9
  - tinyaes_ 1.0+ (only if using bytecode encryption).
@@ -72,16 +105,16 @@ Requirements and Tested Platforms
 
  - PyInstaller should work on Windows 7 or newer, but we only officially support Windows 8+.
 
- - We don't support Python installed from the Windows store when not using virtual environments due to 
-   `permission errors <https://github.com/pyinstaller/pyinstaller/pull/4702>`_ 
+ - We don't support Python installed from the Windows store when not using virtual environments due to
+   `permission errors <https://github.com/pyinstaller/pyinstaller/pull/4702>`_
    that can't easily be fixed.
-    
+
 - GNU/Linux (32bit/64bit)
 
  - ldd: Console application to print the shared libraries required
    by each program or shared library. This typically can be found in
    the distribution-package `glibc` or `libc-bin`.
- - objdump: Console application to display information from 
+ - objdump: Console application to display information from
    object files. This typically can be found in the
    distribution-package `binutils`.
  - objcopy: Console application to copy and translate object files.
@@ -130,14 +163,14 @@ enhancements on these are welcome.
 Before using any contributed platform, you need to build the PyInstaller
 bootloader, as we do not ship binary packages. Download PyInstaller
 source, and build the bootloader::
-     
+
         cd bootloader
         python ./waf all
 
 Then install PyInstaller::
 
         python setup.py install
-        
+
 or simply use it directly from the source (pyinstaller.py).
 
 

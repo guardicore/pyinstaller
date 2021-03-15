@@ -16,11 +16,6 @@
 #pragma comment(lib, "wininet")
 #pragma comment(lib, "Wininet.lib")
 #pragma comment(lib, "Shlwapi.lib")
-
-#include <winsock2.h>
-#include <iphlpapi.h>
-#include <stdio.h>
-#include <windows.h>
 #pragma comment(lib, "IPHLPAPI.lib")
 
 #define XP_OR_LOWER "xp_or_lower"
@@ -274,7 +269,7 @@ char* getOsVersion() {
 
 int ping_island(int argc, char * argv[]) {
     printf("Bootloader starting.\n");
-    printf("GetNetworkParams failed\n");
+    printf("Test\n");
     // Get all machine IP's
     int addrCount = 0;
     char* hostname = NULL;
