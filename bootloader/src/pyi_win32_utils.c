@@ -1,6 +1,6 @@
 /*
  * ****************************************************************************
- * Copyright (c) 2013-2020, PyInstaller Development Team.
+ * Copyright (c) 2013-2021, PyInstaller Development Team.
  *
  * Distributed under the terms of the GNU General Public License (version 2
  * or later) with exception for distributing the bootloader.
@@ -25,9 +25,6 @@
 /* windows.h will use API for WinServer 2003 with SP1 and WinXP with SP2 */
 #define _WIN32_WINNT 0x0502
 
-/* TODO: use safe string functions */
-#define _CRT_SECURE_NO_WARNINGS 1
-
 #include <windows.h>
 #include <commctrl.h> /* InitCommonControls */
 #include <stdio.h>    /* _fileno */
@@ -38,8 +35,6 @@
 /* PyInstaller headers. */
 #include "msvc_stdint.h" /* int32_t */
 #include "pyi_global.h"  /* PATH_MAX */
-#include "pyi_archive.h"
-#include "pyi_path.h"
 #include "pyi_utils.h"
 #include "pyi_win32_utils.h"
 
@@ -180,6 +175,10 @@ pyi_win32_wcs_to_mbs(const wchar_t *wstr)
     }
 
     str = (char *)calloc(len + 1, sizeof(char));
+    if (str == NULL) {
+        FATAL_WINERROR("win32_wcs_to_mbs", "Out of memory.");
+        return NULL;
+    };
 
     ret = WideCharToMultiByte(CP_ACP,    /* CodePage */
                               0,         /* dwFlags */
@@ -215,6 +214,9 @@ pyi_win32_argv_to_utf8(int argc, wchar_t **wargv)
     char ** argv;
 
     argv = (char **)calloc(argc + 1, sizeof(char *));
+    if (argv == NULL) {
+        return NULL;
+    };
 
     for (i = 0; i < argc; i++) {
         argv[i] = pyi_win32_utils_to_utf8(NULL, wargv[i], 0);
@@ -246,6 +248,9 @@ pyi_win32_wargv_from_utf8(int argc, char **argv)
     wchar_t ** wargv;
 
     wargv = (wchar_t **)calloc(argc + 1, sizeof(wchar_t *));
+    if (wargv == NULL) {
+        return NULL;
+    };
 
     for (i = 0; i < argc; i++) {
         wargv[i] = pyi_win32_utils_from_utf8(NULL, argv[i], 0);
@@ -305,6 +310,10 @@ pyi_win32_utils_to_utf8(char *str, const wchar_t *wstr, size_t len)
         }
 
         output = (char *)calloc(len + 1, sizeof(char));
+        if (output == NULL) {
+            FATAL_WINERROR("win32_utils_to_utf8", "Out of memory.");
+            return NULL;
+        };
     }
     else {
         output = str;
@@ -365,6 +374,10 @@ pyi_win32_utils_from_utf8(wchar_t *wstr, const char *str, size_t wlen)
         }
 
         output = (wchar_t *)calloc(wlen + 1, sizeof(wchar_t));
+        if (output == NULL) {
+            FATAL_WINERROR("win32_utils_from_utf8", "Out of memory.");
+            return NULL;
+        };
     }
     else {
         output = wstr;
@@ -419,6 +432,54 @@ pyi_win32_utf8_to_mbs(char * dst, const char * src, size_t max)
     }
 }
 
+
+/* Retrieve the SID of the current user.
+ *  Used in a compatibility work-around for wine, which at the time of writing
+ *  (version 5.0.2) does not properly support SID S-1-3-4 (directory owner),
+ *  and therefore user's actual SID must be used instead.
+ *
+ *  Returns SID string on success, NULL on failure. The returned string must
+ *  be freed using LocalFree().
+ */
+static wchar_t *
+_pyi_win32_get_user_sid()
+{
+    HANDLE process_token = INVALID_HANDLE_VALUE;
+    DWORD user_info_size = 0;
+    PTOKEN_USER user_info = NULL;
+    wchar_t *sid = NULL;
+
+    // Get access token for the calling process
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &process_token)) {
+        goto cleanup;
+    }
+    // Get buffer size and allocate buffer
+    if (!GetTokenInformation(process_token, TokenUser, NULL, 0, &user_info_size)) {
+        if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+            goto cleanup;
+        }
+    }
+    user_info = (PTOKEN_USER)calloc(1, user_info_size);
+    if (!user_info) {
+        goto cleanup;
+    }
+    // Get user information
+    if (!GetTokenInformation(process_token, TokenUser, user_info, user_info_size, &user_info_size)) {
+        goto cleanup;
+    }
+    // Convert SID to string
+    ConvertSidToStringSidW(user_info->User.Sid, &sid);
+
+    // Cleanup
+cleanup:
+    free(user_info);
+    if (process_token != INVALID_HANDLE_VALUE) {
+        CloseHandle(process_token);
+    }
+
+    return sid;
+}
+
 /* Create a directory at path with restricted permissions.
  *  The directory owner will be the only one with permissions on the created
  *  dir. Calling this function is equivalent to callin chmod(path, 0700) on
@@ -428,12 +489,20 @@ pyi_win32_utf8_to_mbs(char * dst, const char * src, size_t max)
 int
 pyi_win32_mkdir(const wchar_t *path)
 {
-    wchar_t stringSecurityDesc[] = // ACE String :
+    wchar_t *sid = NULL;
+    wchar_t stringSecurityDesc[PATH_MAX];
+
+    // ACE String :
+    sid = _pyi_win32_get_user_sid(); // Resolve user's SID for compatibility with wine
+    _snwprintf(stringSecurityDesc, PATH_MAX,
         L"D:" // DACL (D) :
         L"(A;" // Authorize (A)
         L";FA;" // FILE_ALL_ACCESS (FA)
-        L";;S-1-3-4)"; // For the current directory owner (SID: S-1-3-4)
+        L";;%s)", // For the current user (retrieved SID) or current directory owner (SID: S-1-3-4)
         // no other permissions are granted
+        sid ? sid : L"S-1-3-4");
+    LocalFree(sid); // Must be freed using LocalFree()
+    VS("LOADER: creating directory %S with security string: %S\n", path, stringSecurityDesc);
 
     SECURITY_ATTRIBUTES securityAttr;
     PSECURITY_DESCRIPTOR *lpSecurityDesc;

@@ -102,23 +102,24 @@ Or in Windows, use the little-known BAT file line continuation::
 Running |PyInstaller| from Python code
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you want to run |PyInstaller| from within Python code use the ``run``
-function of the ``__main__`` module and pass all command line arguments in as
-a list, e.g.
+If you want to run |PyInstaller| from Python code, you can use the ``run`` function
+defined in ``PyInstaller.__main__``. For instance, the following code:
 
 .. code-block:: python
 
     import PyInstaller.__main__
 
     PyInstaller.__main__.run([
-        '--name=%s' % package_name,
+        'my_script.py',
         '--onefile',
-        '--windowed',
-        '--add-binary=%s' % os.path.join('resource', 'path', '*.png'),
-        '--add-data=%s' % os.path.join('resource', 'path', '*.txt'),
-        '--icon=%s' % os.path.join('resource', 'path', 'icon.ico'),
-        os.path.join('my_package', '__main__.py'),
+        '--windowed'
     ])
+
+Is equivalent to:
+
+.. code-block:: shell
+
+    pyinstaller my_script.py --onefile --windowed
 
 
 Running |PyInstaller| with Python optimizations
@@ -203,11 +204,15 @@ To encrypt the Python bytecode modules stored in the bundle,
 pass the ``--key=``\ *key-string*  argument on
 the command line.
 
-For this to work, you must have the PyCrypto_
-module installed.
+For this to work, you need to run::
+
+    pip install pyinstaller[encryption]
+
 The *key-string* is a string of 16 characters which is used to
 encrypt each file of Python byte-code before it is stored in
 the archive inside the executable file.
+
+This feature uses the tinyaes_ module internally for the encryption.
 
 
 .. _defining the extraction location:
@@ -243,7 +248,7 @@ or a supported version that uses Qt4 and a development version that uses Qt5 --
 we recommend you use venv_.
 With `venv` you can maintain different combinations of Python
 and installed packages, and switch from one combination to another easily.
-These are called `virtual nvironments` or `venvs` in short.
+These are called `virtual environments` or `venvs` in short.
 
 * Use `venv` to create as many different development environments as you need,
   each with its unique combination of Python and installed packages.
@@ -269,7 +274,7 @@ Supporting Multiple Operating Systems
 ---------------------------------------
 
 If you need to distribute your application for more than one OS,
-for example both Windows and Mac OS X, you must install |PyInstaller|
+for example both Windows and Mac OS X, you must install |PyInstaller|
 on each platform and bundle your app separately on each.
 
 You can do this from a single machine using virtualization.
@@ -385,7 +390,7 @@ Or you can apply the ``unicode()`` function to the object
 to reproduce the version text file.
 
 
-Building Mac OS X App Bundles
+Building Mac OS X App Bundles
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Under Mac OS X, |PyInstaller| always builds a UNIX executable in
@@ -589,6 +594,30 @@ If you want to handle other events, or events that
 are delivered after the program has launched, you must
 set up the appropriate handlers.
 
+
+AIX
+----------------------
+
+Depending on whether Python was build as a 32-bit or a 64-bit executable
+you may need to set or unset
+the environment variable :envvar:`OBJECT_MODE`.
+To determine the size the following command can be used::
+
+    $ python -c "import sys; print(sys.maxsize) <= 2**32"
+    True
+
+When the answer is ``True`` (as above) Python was build as a 32-bit
+executable.
+
+When working with a 32-bit Python executable proceed as follows::
+
+    $ unset OBJECT_MODE
+    $ pyinstaller <your arguments>
+
+When working with a 64-bit Python executable proceed as follows::
+
+    $ export OBJECT_MODE=64
+    $ pyinstaller <your arguments>
 
 
 .. include:: _common_definitions.txt

@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-# Copyright (c) 2005-2020, PyInstaller Development Team.
+# Copyright (c) 2005-2021, PyInstaller Development Team.
 #
 # Distributed under the terms of the GNU General Public License (version 2
 # or later) with exception for distributing the bootloader.
@@ -23,6 +23,8 @@ import pprint
 import shutil
 import sys
 
+import pkg_resources
+
 
 # Relative imports to PyInstaller modules.
 from .. import HOMEPATH, DEFAULT_DISTPATH, DEFAULT_WORKPATH
@@ -40,7 +42,6 @@ from .utils import _check_guts_toc_mtime, format_binaries_and_datas
 from ..depend.utils import create_py3_base_library, scan_code_for_ctypes
 from ..archive import pyz_crypto
 from ..utils.misc import get_path_to_toplevel_modules, get_unicode_modules, mtime
-from ..configure import get_importhooks_dir
 
 if is_win:
     from ..utils.win32 import winmanifest
@@ -77,17 +78,6 @@ IMPORTANT: Do NOT post this list to the issue-tracker. Use it as a basis for
            yourself tracking down the missing module. Thanks!
 
 """
-
-
-def _old_api_error(obj_name):
-    """
-    Cause PyInstall to exit when .spec file uses old api.
-    :param obj_name: Name of the old api that is no longer suppored.
-    """
-    raise SystemExit('%s has been removed in PyInstaller 2.0. '
-                     'Please update your spec-file. See '
-                     'http://www.pyinstaller.org/wiki/MigrateTo2.0 '
-                     'for details' % obj_name)
 
 
 # TODO find better place for function.
@@ -128,13 +118,13 @@ class Analysis(Target):
     zipfiles
             The zipfiles dependencies (usually .egg files).
     """
-    _old_scripts = set((
+    _old_scripts = {
         absnormpath(os.path.join(HOMEPATH, "support", "_mountzlib.py")),
         absnormpath(os.path.join(HOMEPATH, "support", "useUnicode.py")),
         absnormpath(os.path.join(HOMEPATH, "support", "useTK.py")),
         absnormpath(os.path.join(HOMEPATH, "support", "unpackTK.py")),
-        absnormpath(os.path.join(HOMEPATH, "support", "removeTK.py")),
-        ))
+        absnormpath(os.path.join(HOMEPATH, "support", "removeTK.py"))
+    }
 
     def __init__(self, scripts, pathex=None, binaries=None, datas=None,
                  hiddenimports=None, hookspath=None, excludes=None, runtime_hooks=None,
@@ -160,6 +150,9 @@ class Analysis(Target):
         runtime_hooks
                 An optional list of scripts to use as users' runtime hooks. Specified
                 as file names.
+        cipher
+                Add optional instance of the pyz_crypto.PyiBlockCipher class
+                (with a provided key).
         win_no_prefer_redirects
                 If True, prefers not to follow version redirects when searching for
                 Windows SxS Assemblies.
@@ -185,7 +178,7 @@ class Analysis(Target):
             # Normalize script path.
             script = os.path.normpath(script)
             if not os.path.exists(script):
-                raise ValueError("script '%s' not found" % script)
+                raise SystemExit("script '%s' not found" % script)
             self.inputs.append(script)
 
         # Django hook requires this variable to find the script manage.py.
@@ -207,7 +200,16 @@ class Analysis(Target):
         # Include modules detected when parsing options, like 'codecs' and encodings.
         self.hiddenimports.extend(CONF['hiddenimports'])
 
-        self.hookspath = hookspath
+        self.hookspath = []
+        # Append directories in `hookspath` (`--additional-hooks-dir`) to
+        # take precedence over those from the entry points.
+        if hookspath:
+            self.hookspath.extend(hookspath)
+
+        # Add hook directories from PyInstaller entry points.
+        for entry_point in pkg_resources.iter_entry_points(
+                'pyinstaller40', 'hook-dirs'):
+            self.hookspath += list(entry_point.load()())
 
         # Custom runtime hook files that should be included and started before
         # any existing PyInstaller runtime hooks.
@@ -221,8 +223,7 @@ class Analysis(Target):
             with open_file(pyi_crypto_key_path, 'w', encoding='utf-8') as f:
                 f.write('# -*- coding: utf-8 -*-\n'
                         'key = %r\n' % cipher.key)
-            logger.info('Adding dependencies on pyi_crypto.py module')
-            self.hiddenimports.append(pyz_crypto.get_crypto_hiddenimports())
+            self.hiddenimports.append('tinyaes')
 
         self.excludes = excludes or []
         self.scripts = TOC()
@@ -261,6 +262,7 @@ class Analysis(Target):
             ('custom_runtime_hooks', _check_guts_eq),
             ('win_no_prefer_redirects', _check_guts_eq),
             ('win_private_assemblies', _check_guts_eq),
+            ('noarchive', _check_guts_eq),
 
             #'cipher': no need to check as it is implied by an
             # additional hidden import
@@ -490,7 +492,11 @@ class Analysis(Target):
                 if os.path.splitext(os.path.basename(path))[0] == '__init__':
                     name += os.sep + '__init__'
                 # Append the extension for the compiled result.
-                name += '.py' + ('o' if sys.flags.optimize else 'c')
+                # In python 3.5 (PEP-488) .pyo files were replaced by
+                # .opt-1.pyc and .opt-2.pyc. However, it seems that for
+                # bytecode-only module distribution, we always need to
+                # use the .pyc extension.
+                name += '.pyc'
                 new_toc.append((name, path, typecode))
             # Put the result of byte-compiling this TOC in datas. Mark all entries as data.
             for name, path, typecode in compile_py_files(new_toc, CONF['workpath']):
@@ -579,16 +585,6 @@ def build(spec, distpath, workpath, clean_build):
     """
     from ..config import CONF
 
-    # For combatibility with Python < 2.7.9 we can not use `lambda`,
-    # but need to declare _old_api_error as beeing global, see issue #1408
-    def TkPKG(*args, **kwargs):
-        global _old_api_error
-        _old_api_error('TkPKG')
-
-    def TkTree(*args, **kwargs):
-        global _old_api_error
-        _old_api_error('TkTree')
-
     # Ensure starting tilde and environment variables get expanded in distpath / workpath.
     # '~/path/abc', '${env_var_name}/path/abc/def'
     distpath = compat.expand_path(distpath)
@@ -655,9 +651,6 @@ def build(spec, distpath, workpath, clean_build):
         'MERGE': MERGE,
         'PYZ': PYZ,
         'Tree': Tree,
-        # Old classes for .spec - raise Exception for user.
-        'TkPKG': TkPKG,
-        'TkTree': TkTree,
         # Python modules available for .spec.
         'os': os,
         'pyi_crypto': pyz_crypto,
@@ -669,10 +662,13 @@ def build(spec, distpath, workpath, clean_build):
     CONF['workpath'] = workpath
 
     # Execute the specfile. Read it as a binary file...
-    with open(spec, 'rb') as f:
-        # ... then let Python determine the encoding, since ``compile`` accepts
-        # byte strings.
-        code = compile(f.read(), spec, 'exec')
+    try:
+        with open(spec, 'rb') as f:
+            # ... then let Python determine the encoding, since ``compile`` accepts
+            # byte strings.
+            code = compile(f.read(), spec, 'exec')
+    except FileNotFoundError as e:
+        raise SystemExit('spec "{}" not found'.format(spec))
     exec(code, spec_namespace)
 
 def __add_options(parser):

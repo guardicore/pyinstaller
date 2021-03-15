@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-# Copyright (c) 2005-2020, PyInstaller Development Team.
+# Copyright (c) 2005-2021, PyInstaller Development Team.
 #
 # Distributed under the terms of the GNU General Public License (version 2
 # or later) with exception for distributing the bootloader.
@@ -27,6 +27,8 @@ For reference, the ModuleGraph node types and their contents:
  Package          basename         full path to __init__.py
         packagepath is ['path to package']
         globalnames is set of global names __init__.py defines
+ ExtensionPackage basename         full path to __init__.{so,dll}
+        packagepath is ['path to package']
 
 The main extension here over ModuleGraph is a method to extract nodes
 from the flattened graph and return them as a TOC, or added to a TOC.
@@ -38,10 +40,13 @@ import os
 import re
 import sys
 import traceback
+import ast
 
 from copy import deepcopy
+from collections import defaultdict
 
-from .. import HOMEPATH, configure
+from .. import compat
+from .. import HOMEPATH, PACKAGEPATH
 from .. import log as logging
 from ..log import INFO, DEBUG, TRACE
 from ..building.datastruct import TOC
@@ -53,7 +58,7 @@ from ..compat import importlib_load_source, PY3_BASE_MODULES,\
 from ..lib.modulegraph.find_modules import get_implies
 from ..lib.modulegraph.modulegraph import ModuleGraph
 from ..utils.hooks import collect_submodules, is_package
-from ..utils.misc import load_py_data_struct
+
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +118,6 @@ class PyiModuleGraph(ModuleGraph):
         self._excludes = excludes
         self._reset(user_hook_dirs)
         self._analyze_base_modules()
-        self._available_rthooks = load_py_data_struct(
-            os.path.join(self._homepath,
-                         'PyInstaller', 'loader', 'rthooks.dat'))
 
     def _reset(self, user_hook_dirs):
         """
@@ -124,7 +126,10 @@ class PyiModuleGraph(ModuleGraph):
         """
         self._top_script_node = None
         self._additional_files_cache = AdditionalFilesCache()
-        self._user_hook_dirs = user_hook_dirs
+        # Command line, Entry Point, and then builtin hook dirs.
+        self._user_hook_dirs = (
+            list(user_hook_dirs) + [os.path.join(PACKAGEPATH, 'hooks')]
+        )
         # Hook-specific lookup tables.
         # These need to reset when reusing cached PyiModuleGraph to avoid
         # hooks to refer to files or data from another test-case.
@@ -132,6 +137,72 @@ class PyiModuleGraph(ModuleGraph):
         self._hooks = self._cache_hooks("")
         self._hooks_pre_safe_import_module = self._cache_hooks('pre_safe_import_module')
         self._hooks_pre_find_module_path = self._cache_hooks('pre_find_module_path')
+
+        # Search for run-time hooks in all hook directories.
+        self._available_rthooks = defaultdict(list)
+        for uhd in self._user_hook_dirs:
+            uhd_path = os.path.abspath(os.path.join(uhd, 'rthooks.dat'))
+            try:
+                with compat.open_file(uhd_path, compat.text_read_mode,
+                                      encoding='utf-8') as f:
+                    rthooks = ast.literal_eval(f.read())
+            except FileNotFoundError:
+                # Ignore if this hook path doesn't have run-time hooks.
+                continue
+            except Exception as e:
+                logger.error('Unable to read run-time hooks from %r: %s' %
+                             (uhd_path, e))
+                continue
+
+            self._merge_rthooks(rthooks, uhd, uhd_path)
+
+        # Convert back to a standard dict.
+        self._available_rthooks = dict(self._available_rthooks)
+
+    def _merge_rthooks(self, rthooks, uhd, uhd_path):
+        """The expected data structure for a run-time hook file is a Python
+        dictionary of type ``Dict[str, List[str]]`` where the dictionary
+        keys are module names the the sequence strings are Python file names.
+
+        Check then merge this data structure, updating the file names to be
+        absolute.
+        """
+        # Check that the root element is a dict.
+        assert isinstance(rthooks, dict), (
+            'The root element in %s must be a dict.' % uhd_path)
+        for module_name, python_file_name_list in rthooks.items():
+            # Ensure the key is a string.
+            assert isinstance(module_name, compat.string_types), (
+                '%s must be a dict whose keys are strings; %s '
+                'is not a string.' % (uhd_path, module_name))
+            # Ensure the value is a list.
+            assert isinstance(python_file_name_list, list), (
+                'The value of %s key %s must be a list.' %
+                (uhd_path, module_name))
+            if module_name in self._available_rthooks:
+                logger.warning(
+                    'Runtime hooks for %s have already been defined. Skipping '
+                    'the runtime hooks for %s that are defined in %s.',
+                    module_name, module_name, os.path.join(uhd, 'rthooks')
+                )
+                # Skip this module
+                continue
+            # Merge this with existing run-time hooks.
+            for python_file_name in python_file_name_list:
+                # Ensure each item in the list is a string.
+                assert isinstance(python_file_name, compat.string_types), (
+                    '%s key %s, item %r must be a string.' %
+                    (uhd_path, module_name, python_file_name))
+                # Transform it into an absolute path.
+                abs_path = os.path.join(uhd, 'rthooks', python_file_name)
+                # Make sure this file exists.
+                assert os.path.exists(abs_path), (
+                    'In %s, key %s, the file %r expected to be located at '
+                    '%r does not exist.' %
+                    (uhd_path, module_name, python_file_name, abs_path))
+                # Merge it.
+                self._available_rthooks[module_name].append(abs_path)
+
 
     @staticmethod
     def _findCaller(*args, **kwargs):
@@ -187,12 +258,9 @@ class PyiModuleGraph(ModuleGraph):
             subpackage of the `PyInstaller.hooks` package containing such hooks
             (e.g., `post_create_package` for post-create package hooks).
         """
-        # Absolute path of this type hook package's directory.
-        system_hook_dir = configure.get_importhooks_dir(hook_type)
-
-        # Cache of such hooks.
+        # Cache of this type of hooks.
         # logger.debug("Caching system %s hook dir %r" % (hook_type, system_hook_dir))
-        hook_dirs = [system_hook_dir]
+        hook_dirs = []
         for user_hook_dir in self._user_hook_dirs:
             # Absolute path of the user-defined subdirectory of this hook type.
             # If this directory exists, add it to the list to be cached.
@@ -232,12 +300,13 @@ class PyiModuleGraph(ModuleGraph):
         if self._top_script_node is None:
             # Remember the node for the first script.
             try:
-                self._top_script_node = super(PyiModuleGraph, self).run_script(pathname)
-            except SyntaxError as e:
+                self._top_script_node = super(PyiModuleGraph, self).run_script(
+                    pathname)
+            except SyntaxError:
                 print("\nSyntax error in", pathname, file=sys.stderr)
                 formatted_lines = traceback.format_exc().splitlines(True)
                 print(*formatted_lines[-4:], file=sys.stderr)
-                raise SystemExit(1)
+                sys.exit(1)
             # Create references from the top script to the base_modules in graph.
             for node in self._base_modules:
                 self.createReference(self._top_script_node, node)
@@ -245,10 +314,11 @@ class PyiModuleGraph(ModuleGraph):
             return self._top_script_node
         else:
             if not caller:
-                # Defaults to as any additional script is called from the top-level
-                # script.
+                # Defaults to as any additional script is called from the
+                # top-level script.
                 caller = self._top_script_node
-            return super(PyiModuleGraph, self).run_script(pathname, caller=caller)
+            return super(PyiModuleGraph, self).run_script(
+                pathname, caller=caller)
 
 
     def process_post_graph_hooks(self):
@@ -338,7 +408,8 @@ class PyiModuleGraph(ModuleGraph):
             # For the absolute path of each such hook...
             for hook in self._hooks_pre_safe_import_module[module_name]:
                 # Dynamically import this hook as a fabricated module.
-                logger.info('Processing pre-safe import module hook   %s', module_name)
+                logger.info('Processing pre-safe import module hook %s '
+                            'from %r.', module_name, hook.hook_filename)
                 hook_module_name = 'PyInstaller_hooks_pre_safe_import_module_' + module_name.replace('.', '_')
                 hook_module = importlib_load_source(hook_module_name,
                                                     hook.hook_filename)
@@ -353,7 +424,10 @@ class PyiModuleGraph(ModuleGraph):
 
                 # Run this hook, passed this object.
                 if not hasattr(hook_module, 'pre_safe_import_module'):
-                    raise NameError('pre_safe_import_module() function not defined by hook %r.' % hook_file)
+                    raise NameError(
+                        'pre_safe_import_module() function not defined by '
+                        'hook %r.' % hook_module
+                    )
                 hook_module.pre_safe_import_module(hook_api)
 
                 # Respect method call changes requested by this hook.
@@ -385,7 +459,8 @@ class PyiModuleGraph(ModuleGraph):
             # For the absolute path of each such hook...
             for hook in self._hooks_pre_find_module_path[fullname]:
                 # Dynamically import this hook as a fabricated module.
-                logger.info('Processing pre-find module path hook   %s', fullname)
+                logger.info('Processing pre-find module path hook %s from %r.',
+                            fullname, hook.hook_filename)
                 hook_fullname = 'PyInstaller_hooks_pre_find_module_path_' + fullname.replace('.', '_')
                 hook_module = importlib_load_source(hook_fullname,
                                                     hook.hook_filename)
@@ -399,7 +474,10 @@ class PyiModuleGraph(ModuleGraph):
 
                 # Run this hook, passed this object.
                 if not hasattr(hook_module, 'pre_find_module_path'):
-                    raise NameError('pre_find_module_path() function not defined by hook %r.' % hook_file)
+                    raise NameError(
+                        'pre_find_module_path() function not defined by '
+                        'hook %r.' % hook_module
+                    )
                 hook_module.pre_find_module_path(hook_api)
 
                 # Respect method call changes requested by this hook.
@@ -457,42 +535,14 @@ class PyiModuleGraph(ModuleGraph):
 
         result = existing_TOC or TOC()
         for node in self.flatten(start=self._top_script_node):
-            # TODO This is terrible. Everything in Python has a type. It's
-            # nonsensical to even speak of "nodes [that] are not typed." How
-            # would that even occur? After all, even "None" has a type! (It's
-            # "NoneType", for the curious.) Remove this, please.
-
             # Skip modules that are in base_library.zip.
             if module_filter.match(node.identifier):
                 continue
-
-            # get node type e.g. Script
-            mg_type = type(node).__name__
-            assert mg_type is not None
-
-            if typecode and not (mg_type in typecode):
-                # Type is not a to be selected one, skip this one
-                continue
-            # Extract the identifier and a path if any.
-            if mg_type == 'Script':
-                # for Script nodes only, identifier is a whole path
-                (name, ext) = os.path.splitext(node.filename)
-                name = os.path.basename(name)
-            else:
-                name = node.identifier
-            path = node.filename if node.filename is not None else ''
-            # Ensure name is really 'str'. Module graph might return
-            # object type 'modulegraph.Alias' which inherits fromm 'str'.
-            # But 'marshal.dumps()' function is able to marshal only 'str'.
-            # Otherwise on Windows PyInstaller might fail with message like:
-            #
-            #   ValueError: unmarshallable object
-            name = str(name)
-            # Translate to the corresponding TOC typecode.
-            toc_type = MODULE_TYPES_TO_TOC_DICT[mg_type]
-            # TOC.append the data. This checks for a pre-existing name
-            # and skips it if it exists.
-            result.append((name, path, toc_type))
+            entry = self._node_to_toc(node, typecode)
+            if entry is not None:
+                # TOC.append the data. This checks for a pre-existing name
+                # and skips it if it exists.
+                result.append(entry)
         return result
 
     def make_pure_toc(self):
@@ -514,6 +564,46 @@ class PyiModuleGraph(ModuleGraph):
         """
         return self._make_toc(BAD_MODULE_TYPES)
 
+    @staticmethod
+    def _node_to_toc(node, typecode=None):
+        # TODO This is terrible. Everything in Python has a type. It's
+        # nonsensical to even speak of "nodes [that] are not typed." How
+        # would that even occur? After all, even "None" has a type! (It's
+        # "NoneType", for the curious.) Remove this, please.
+
+        # get node type e.g. Script
+        mg_type = type(node).__name__
+        assert mg_type is not None
+
+        if typecode and not (mg_type in typecode):
+            # Type is not a to be selected one, skip this one
+            return None
+        # Extract the identifier and a path if any.
+        if mg_type == 'Script':
+            # for Script nodes only, identifier is a whole path
+            (name, ext) = os.path.splitext(node.filename)
+            name = os.path.basename(name)
+        elif mg_type == 'ExtensionPackage':
+            # package with __init__ module being an extension module
+            # This needs to end up as e.g. 'mypkg/__init__.so'.
+            # Convert the packages name ('mypkg') into the module name
+            # ('mypkg.__init__') *here* to keep special cases away elsewhere
+            # (where the module name is converted to a filename).
+            name = node.identifier + ".__init__"
+        else:
+            name = node.identifier
+        path = node.filename if node.filename is not None else ''
+        # Ensure name is really 'str'. Module graph might return
+        # object type 'modulegraph.Alias' which inherits fromm 'str'.
+        # But 'marshal.dumps()' function is able to marshal only 'str'.
+        # Otherwise on Windows PyInstaller might fail with message like:
+        #
+        #   ValueError: unmarshallable object
+        name = str(name)
+        # Translate to the corresponding TOC typecode.
+        toc_type = MODULE_TYPES_TO_TOC_DICT[mg_type]
+        return (name, path, toc_type)
+
     def nodes_to_toc(self, node_list, existing_TOC=None):
         """
         Given a list of nodes, create a TOC representing those nodes.
@@ -524,15 +614,7 @@ class PyiModuleGraph(ModuleGraph):
         """
         result = existing_TOC or TOC()
         for node in node_list:
-            mg_type = type(node).__name__
-            toc_type = MODULE_TYPES_TO_TOC_DICT[mg_type]
-            if mg_type == "Script" :
-                (name, ext) = os.path.splitext(node.filename)
-                name = os.path.basename(name)
-            else:
-                name = node.identifier
-            path = node.filename if node.filename is not None else ''
-            result.append( (name, path, toc_type) )
+            result.append(self._node_to_toc(node))
         return result
 
     # Return true if the named item is in the graph as a BuiltinModule node.
@@ -606,10 +688,9 @@ class PyiModuleGraph(ModuleGraph):
             # Look if there is any run-time hook for given module.
             if mod_name in self._available_rthooks:
                 # There could be several run-time hooks for a module.
-                for hook in self._available_rthooks[mod_name]:
-                    logger.info("Including run-time hook %r", hook)
-                    path = os.path.join(self._homepath, 'PyInstaller', 'loader', 'rthooks', hook)
-                    rthooks_nodes.append(self.run_script(path))
+                for abs_path in self._available_rthooks[mod_name]:
+                    logger.info("Including run-time hook %r", abs_path)
+                    rthooks_nodes.append(self.run_script(abs_path))
 
         return rthooks_nodes
 
@@ -642,14 +723,17 @@ class PyiModuleGraph(ModuleGraph):
 
     def get_co_using_ctypes(self):
         """
-        Find modules that imports Python module 'ctypes'.
+        Find modules that import Python module 'ctypes'.
 
-        Modules that imports 'ctypes' probably load a dll that might be required
-        for bundling with the executable. The usual way to load a DLL is using:
+        Modules that import 'ctypes' probably load a dll that might be
+        required for bundling with the executable. Thus these modules' code
+        needs then to be searched for patterns like these:
+
             ctypes.CDLL('libname')
             ctypes.cdll.LoadLibrary('libname')
 
-        :return: Code objects that might be scanned for module dependencies.
+        :return: Code objects importing `ctypes` and thus need to be scanned
+                 for module dependencies.
         """
         co_dict = {}
         pure_python_module_types = PURE_PYTHON_MODULE_TYPES | {'Script',}

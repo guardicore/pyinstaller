@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-# Copyright (c) 2013-2020, PyInstaller Development Team.
+# Copyright (c) 2013-2021, PyInstaller Development Team.
 #
 # Distributed under the terms of the GNU General Public License (version 2
 # or later) with exception for distributing the bootloader.
@@ -38,6 +38,7 @@ seen = set()
 
 # Import windows specific stuff.
 if is_win:
+    from distutils.sysconfig import get_python_lib
     from ..utils.win32.winmanifest import RT_MANIFEST
     from ..utils.win32.winmanifest import GetManifestResources
     from ..utils.win32.winmanifest import Manifest
@@ -56,23 +57,18 @@ def getfullnameof(mod, xtrapath=None):
     Return the full path name of MOD.
     Will search the full Windows search path, as well as sys.path
     """
-    # TODO: Allow in import-hooks to specify additional paths where the PyInstaller
-    #       should look for other libraries.
-    #       Or allow to automatically look for dlls in directories where are .pyd files.
-    # SciPy/Numpy Windows builds from http://www.lfd.uci.edu/~gohlke/pythonlibs
-    # Contain some dlls in directory like C:\Python27\Lib\site-packages\numpy\core\
-    from distutils.sysconfig import get_python_lib
-    numpy_core_paths = [os.path.join(get_python_lib(), 'numpy', 'core')]
-    # In virtualenv numpy might be installed directly in real prefix path.
-    # Then include this path too.
-    if is_venv:
-        numpy_core_paths.append(
-            os.path.join(base_prefix, 'Lib', 'site-packages', 'numpy', 'core')
-        )
+    pywin32_paths = []
+    if is_win:
+        pywin32_paths = [os.path.join(get_python_lib(), 'pywin32_system32')]
+        if is_venv:
+            pywin32_paths.append(
+                os.path.join(base_prefix, 'Lib', 'site-packages',
+                             'pywin32_system32')
+            )
 
-    # TODO check if this 'numpy' workaround is still necessary!
-    # Search sys.path first!
-    epath = (sys.path + numpy_core_paths + winutils.get_system_path() +
+    epath = (sys.path +  # Search sys.path first!
+             pywin32_paths +
+             winutils.get_system_path() +
              compat.getenv('PATH', '').split(os.pathsep))
     if xtrapath is not None:
         if type(xtrapath) == type(''):
@@ -125,7 +121,7 @@ def _getImports_pe(pth):
                 # sym.forwarder is a bytes object. Convert it to a string.
                 forwarder = winutils.convert_dll_name_to_str(sym.forwarder)
                 # sym.forwarder is for example 'KERNEL32.EnterCriticalSection'
-                dll, _ = forwarder.split('.')
+                dll = forwarder.split('.')[0]
                 dlls.add(dll + ".dll")
 
     pe.close()
@@ -196,7 +192,7 @@ def matchDLLArch(filename):
         pe.close()
     except pefile.PEFormatError as exc:
         raise SystemExit('Can not get architecture from file: %s\n'
-                         '  Reason: %s' % (pefilename, exception))
+                         '  Reason: %s' % (pefilename, exc))
     return match_arch
 
 
@@ -275,7 +271,7 @@ def pkg_resources_get_default_cache():
             return os.path.join(dirname, 'Python-Eggs')
     else:
         raise RuntimeError(
-            "Please set the PYTHON_EGG_CACHE enviroment variable"
+            "Please set the PYTHON_EGG_CACHE environment variable"
         )
 
 
@@ -885,7 +881,8 @@ def get_python_library_path():
 
     # Try to get Python library name from the Python executable. It assumes that Python
     # library is not statically linked.
-    dlls = getImports(sys.executable)
+    executable = getattr(sys, '_base_executable', sys.executable)
+    dlls = getImports(executable)
     for filename in dlls:
         for name in PYDYLIB_NAMES:
             if os.path.basename(filename) == name:

@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-# Copyright (c) 2005-2020, PyInstaller Development Team.
+# Copyright (c) 2005-2021, PyInstaller Development Team.
 #
 # Distributed under the terms of the GNU General Public License (version 2
 # or later) with exception for distributing the bootloader.
@@ -41,6 +41,7 @@ CRYPT_BLOCK_SIZE = 16
 PYZ_TYPE_MODULE = 0
 PYZ_TYPE_PKG = 1
 PYZ_TYPE_DATA = 2
+PYZ_TYPE_NSPKG = 3  # PEP-420 namespace package
 
 class FilePos(object):
     """
@@ -249,40 +250,20 @@ class Cipher(object):
             self.key = key.zfill(CRYPT_BLOCK_SIZE)
         assert len(self.key) == CRYPT_BLOCK_SIZE
 
-        # Import the right AES module.
-        self._aes = self._import_aesmod()
-
-    def _import_aesmod(self):
-        """
-        Tries to import the AES module from PyCrypto.
-
-        PyCrypto 2.4 and 2.6 uses different name of the AES extension.
-        """
-        # The _AES.so module exists only in PyCrypto 2.6 and later. Try to import
-        # that first.
-        modname = 'Crypto.Cipher._AES'
-
-        kwargs = dict(fromlist=['Crypto', 'Cipher'])
-        try:
-            mod = __import__(modname, **kwargs)
-        except ImportError:
-            modname = 'Crypto.Cipher.AES'
-            mod = __import__(modname, **kwargs)
-
+        import tinyaes
+        self._aesmod = tinyaes
         # Issue #1663: Remove the AES module from sys.modules list. Otherwise
-        # it interferes with using 'Crypto.Cipher' module in users' code.
-        if modname in sys.modules:
-            del sys.modules[modname]
-        return mod
+        # it interferes with using 'tinyaes' module in users' code.
+        del sys.modules['tinyaes']
 
     def __create_cipher(self, iv):
-        # The 'BlockAlgo' class is stateful, this factory method is used to
-        # re-initialize the block cipher class with each call to encrypt() and
-        # decrypt().
-        return self._aes.new(self.key, self._aes.MODE_CFB, iv)
+        # The 'AES' class is stateful, this factory method is used to
+        # re-initialize the block cipher class with each call to xcrypt().
+        return self._aesmod.AES(self.key.encode(), iv)
 
     def decrypt(self, data):
-        return self.__create_cipher(data[:CRYPT_BLOCK_SIZE]).decrypt(data[CRYPT_BLOCK_SIZE:])
+        cipher = self.__create_cipher(data[:CRYPT_BLOCK_SIZE])
+        return cipher.CTR_xcrypt_buffer(data[CRYPT_BLOCK_SIZE:])
 
 
 class ZlibArchiveReader(ArchiveReader):
@@ -330,7 +311,13 @@ class ZlibArchiveReader(ArchiveReader):
         (typ, pos, length) = self.toc.get(name, (0, None, 0))
         if pos is None:
             return None
-        return typ == PYZ_TYPE_PKG
+        return typ in (PYZ_TYPE_PKG, PYZ_TYPE_NSPKG)
+
+    def is_pep420_namespace_package(self, name):
+        (typ, pos, length) = self.toc.get(name, (0, None, 0))
+        if pos is None:
+            return None
+        return typ == PYZ_TYPE_NSPKG
 
     def extract(self, name):
         (typ, pos, length) = self.toc.get(name, (0, None, 0))
@@ -343,8 +330,9 @@ class ZlibArchiveReader(ArchiveReader):
             if self.cipher:
                 obj = self.cipher.decrypt(obj)
             obj = zlib.decompress(obj)
-            if typ in (PYZ_TYPE_MODULE, PYZ_TYPE_PKG):
+            if typ in (PYZ_TYPE_MODULE, PYZ_TYPE_PKG, PYZ_TYPE_NSPKG):
                 obj = marshal.loads(obj)
-        except EOFError:
-            raise ImportError("PYZ entry '%s' failed to unmarshal" % name)
+        except EOFError as e:
+            raise ImportError("PYZ entry '%s' failed to unmarshal" %
+                              name) from e
         return typ, obj

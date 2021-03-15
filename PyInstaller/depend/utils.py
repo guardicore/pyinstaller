@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #-----------------------------------------------------------------------------
-# Copyright (c) 2005-2020, PyInstaller Development Team.
+# Copyright (c) 2005-2021, PyInstaller Development Team.
 #
 # Distributed under the terms of the GNU General Public License (version 2
 # or later) with exception for distributing the bootloader.
@@ -17,7 +17,6 @@ Utility functions related to analyzing/bundling dependencies.
 
 import ctypes
 import ctypes.util
-import dis
 import io
 import marshal
 import os
@@ -343,7 +342,7 @@ LDCONFIG_CACHE = None  # cache the output of `/sbin/ldconfig -p`
 def load_ldconfig_cache():
     """
     Create a cache of the `ldconfig`-output to call it only once.
-    It contains thousands of libraries and running it on every dynlib
+    It contains thousands of libraries and running it on every dylib
     is expensive.
     """
     global LDCONFIG_CACHE

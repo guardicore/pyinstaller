@@ -1,37 +1,3 @@
-Modified pyinstaller fork
-====================
-
-This is a pyinstaller fork, modified to suit Infection Monkey scanner.
-If you don't develop Infection Monkey please use the official pyinstaller repository.
-Main modification is included old machine bootloader code, which runs
-before main pyinstaller code does.
-
-Build linux
------------
-Make sure you have docker installed on your machine then execute
-
-      sudo ./build_bootloaders_linux.sh
- 
-After bootloader is built you have to replace default pyinstaller bootloader with it if pyinstaller was already installed.
- 
-      cp ./bootloader/build/release/run /home/<USERNAME>/.local/lib/python3.7/site-packages/PyInstaller/bootloader/Linux-64bit/run
-
-
-Build windows
--------------
-Please refer to the pre requisites mentioned in the `PyInstaller documentation <https://pyinstaller.readthedocs.io/en/latest/bootloader-building.html#build-using-visual-studio-c>`_ 
-Afterwards, run the following script
-
-      powershell .\\build_bootloaders_windows.ps1
- 
-When bootloader is built you probably want to replace your default bootloader with it:
-move 
-      .\\bootloader\\build\\release\\run.exe 
-      
-to
-
-      `C:\\Users\\<USERNAME>\\AppData\\Local\\Programs\\Python\\Python37\\Lib\\site-packages\\PyInstaller\\bootloader\\Windows-64bit\\run.exe`
-
 PyInstaller Overview
 ====================
 
@@ -50,9 +16,7 @@ http://www.pyinstaller.org/funding.html for how to support PyInstaller.
 :Documentation: https://pyinstaller.readthedocs.io/
 :Website:       http://www.pyinstaller.org/
 :Code:          https://github.com/pyinstaller/pyinstaller
-:Donate:        | https://www.bountysource.com/teams/pyinstaller
-                | Bitcoin: 1JUFjawzWDR7Tc8z9TKXstVFdjkDY9FbtK
-                | `more ways to donate … <http://www.pyinstaller.org/donate.html>`_
+:Donate, Fund:  http://www.pyinstaller.org/funding.html
 
 
 PyInstaller reads a Python script written by you. It analyzes your code
@@ -74,16 +38,16 @@ but is not tested against them as part of the continuous integration tests.
 Main Advantages
 ---------------
 
-- Works out-of-the-box with any Python version 3.5-3.7.
+- Works out-of-the-box with any Python version 3.5-3.9.
 - Fully multi-platform, and uses the OS support to load the dynamic libraries,
   thus ensuring full compatibility.
-- Correctly bundles the major Python packages such as numpy, PyQt4, PyQt5,
-  PySide, Django, wxPython, matplotlib and others out-of-the-box.
+- Correctly bundles the major Python packages such as numpy, PyQt5,
+  PySide2, Django, wxPython, matplotlib and others out-of-the-box.
 - Compatible with many 3rd-party packages out-of-the-box. (All the required
   tricks to make external packages work are already integrated.)
-- Libraries like PyQt5, PyQt4, PySide, wxPython, matplotlib or Django are fully
+- Libraries like PyQt5, PySide2, wxPython, matplotlib or Django are fully
   supported, without having to handle plugins or external data files manually.
-- Working code signing on OS X.
+- Works with code signing on OS X.
 - Bundles MS Visual C++ DLLs on Windows.
 
 
@@ -98,26 +62,26 @@ PyInstaller is available on PyPI. You can install it through `pip`::
 Requirements and Tested Platforms
 ------------------------------------
 
-- Python:
+- Python: 
 
- - 3.5-3.7
- - PyCrypto_ 2.4+ (only if using bytecode encryption)
+ - 3.5-3.9
+ - tinyaes_ 1.0+ (only if using bytecode encryption).
+   Instead of installing tinyaes, ``pip install pyinstaller[encryption]`` instead.
 
 - Windows (32bit/64bit):
 
- - Windows XP or newer.
+ - PyInstaller should work on Windows 7 or newer, but we only officially support Windows 8+.
 
  - We don't support Python installed from the Windows store when not using virtual environments due to 
    `permission errors <https://github.com/pyinstaller/pyinstaller/pull/4702>`_ 
    that can't easily be fixed.
-   
-   
+    
 - GNU/Linux (32bit/64bit)
 
  - ldd: Console application to print the shared libraries required
    by each program or shared library. This typically can be found in
    the distribution-package `glibc` or `libc-bin`.
- - objdump: Console application to display information from
+ - objdump: Console application to display information from 
    object files. This typically can be found in the
    distribution-package `binutils`.
  - objcopy: Console application to copy and translate object files.
@@ -126,7 +90,7 @@ Requirements and Tested Platforms
 
 - Mac OS X (64bit):
 
- - Mac OS X 10.7 (Lion) or newer.
+ - Mac OS X 10.13 (High Sierra) or newer.
 
 
 Usage
@@ -166,14 +130,14 @@ enhancements on these are welcome.
 Before using any contributed platform, you need to build the PyInstaller
 bootloader, as we do not ship binary packages. Download PyInstaller
 source, and build the bootloader::
-
+     
         cd bootloader
-        python ./waf distclean all
+        python ./waf all
 
 Then install PyInstaller::
 
         python setup.py install
-
+        
 or simply use it directly from the source (pyinstaller.py).
 
 
@@ -193,6 +157,13 @@ if users and companies provide sustainable funding. See
 http://www.pyinstaller.org/funding.html for how to support PyInstaller.
 
 
+Changes in this Release
+-------------------------
 
-.. _PyCrypto: https://www.dlitz.net/software/pycrypto/
-.. _`manual`: https://pyinstaller.readthedocs.io/en/latest/
+You can find a detailed list of changes in this release
+in the `change log`_ section of the manual.
+
+
+.. _tinyaes: https://github.com/naufraghi/tinyaes-py
+.. _`manual`: https://pyinstaller.readthedocs.io/en/v4.2/
+.. _`change log`: https://pyinstaller.readthedocs.io/en/v4.2/CHANGES.html

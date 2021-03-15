@@ -1,6 +1,6 @@
 /*
  * ****************************************************************************
- * Copyright (c) 2013-2020, PyInstaller Development Team.
+ * Copyright (c) 2013-2021, PyInstaller Development Team.
  *
  * Distributed under the terms of the GNU General Public License (version 2
  * or later) with exception for distributing the bootloader.
@@ -57,6 +57,8 @@ DECLPROC(PyDict_GetItemString);
 DECLPROC(PyErr_Clear);
 DECLPROC(PyErr_Occurred);
 DECLPROC(PyErr_Print);
+DECLPROC(PyErr_Fetch);
+DECLPROC(PyErr_Restore);
 
 DECLPROC(PyImport_AddModule);
 DECLPROC(PyImport_ExecCodeModule);
@@ -66,7 +68,10 @@ DECLPROC(PyList_New);
 DECLPROC(PyLong_AsLong);
 DECLPROC(PyModule_GetDict);
 DECLPROC(PyObject_CallFunction);
+DECLPROC(PyObject_CallFunctionObjArgs);
 DECLPROC(PyObject_SetAttrString);
+DECLPROC(PyObject_GetAttrString);
+DECLPROC(PyObject_Str);
 DECLPROC(PyRun_SimpleString);
 DECLPROC(PySys_AddWarnOption);
 DECLPROC(PySys_SetArgvEx);
@@ -76,9 +81,11 @@ DECLPROC(PySys_SetPath);
 DECLPROC(PyUnicode_FromString);
 
 DECLPROC(Py_DecodeLocale);
+DECLPROC(PyMem_RawFree);
 DECLPROC(PyUnicode_FromFormat);
 DECLPROC(PyUnicode_DecodeFSDefault);
 DECLPROC(PyUnicode_Decode);
+DECLPROC(PyUnicode_AsUTF8);
 
 DECLPROC(PyEval_EvalCode);
 DECLPROC(PyMarshal_ReadObjectFromString);
@@ -116,6 +123,8 @@ pyi_python_map_names(HMODULE dll, int pyvers)
     GETPROC(dll, PyErr_Clear);
     GETPROC(dll, PyErr_Occurred);
     GETPROC(dll, PyErr_Print);
+    GETPROC(dll, PyErr_Fetch);
+    GETPROC(dll, PyErr_Restore);
     GETPROC(dll, PyImport_AddModule);
     GETPROC(dll, PyImport_ExecCodeModule);
     GETPROC(dll, PyImport_ImportModule);
@@ -124,7 +133,11 @@ pyi_python_map_names(HMODULE dll, int pyvers)
     GETPROC(dll, PyLong_AsLong);
     GETPROC(dll, PyModule_GetDict);
     GETPROC(dll, PyObject_CallFunction);
+    GETPROC(dll, PyObject_CallFunctionObjArgs);
     GETPROC(dll, PyObject_SetAttrString);
+    GETPROC(dll, PyObject_GetAttrString);
+    GETPROC(dll, PyObject_Str);
+
     GETPROC(dll, PyRun_SimpleString);
 
     GETPROC(dll, PySys_AddWarnOption);
@@ -138,10 +151,12 @@ pyi_python_map_names(HMODULE dll, int pyvers)
     GETPROC(dll, PyUnicode_FromString);
 
     GETPROC(dll, Py_DecodeLocale);
+    GETPROC(dll, PyMem_RawFree);
 
     GETPROC(dll, PyUnicode_FromFormat);
     GETPROC(dll, PyUnicode_Decode);
     GETPROC(dll, PyUnicode_DecodeFSDefault);
+    GETPROC(dll, PyUnicode_AsUTF8);
 
     VS("LOADER: Loaded functions from Python library.\n");
 
