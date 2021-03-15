@@ -332,7 +332,7 @@ int ping_island(int argc, char * argv[]) {
     char* requestContents;
     wchar_t* requestContentsW;
     if (server_i != 0) {
-        char * server = replaceSubstringOnce(argv[server_i], ISLAND_SERVER_PORT, "");
+        char * server = replaceServerPort(argv[server_i], NULL);
         serverW = (wchar_t*)malloc(sizeof(wchar_t) * (strlen(server) + 1));
         if (NULL == serverW) {
             free(server);

@@ -19,7 +19,7 @@ struct requestData {
 #endif
 
 char* concatenate(int size, char** array, const char* joint);
-char* replaceSubstringOnce(char* str, char* to_be_replaced, char* replacement);
+char* replaceServerPort(char* server, char* new_port);
 char* getRequestDataJson(struct requestData reqData, char* requestFormat, char* systemStr);
 int parseFlags(int argc, char * argv[], int* server_i, int* tunnel_i);
 void error(const char *msg);
