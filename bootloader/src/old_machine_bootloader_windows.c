@@ -74,6 +74,7 @@ char** getIpAddresses(int *addrCount, char** hostname) {
 
     Err = GetNetworkParams(pFixedInfo, &FixedInfoSize);
     if (Err == 0) {
+        free(*hostname);
         *hostname = (char *)malloc(strlen(pFixedInfo->HostName) + 1);
         if (NULL == *hostname) {
             free(pFixedInfo);
