@@ -16,7 +16,7 @@
 #include <curl/curl.h>
 #include "old_machine_common_functions.h"
 
-#define BOOTLOADER_SERVER_PORT ":5001"
+#define BOOTLOADER_SERVER_PORT "5001"
 #define TIMEOUT_IN_SECONDS 5
 
 struct response {
@@ -212,7 +212,7 @@ int ping_island(int argc, char * argv[]) {
     char* systemStr = "linux";
     char* requestContents;
     if (server_i != 0) {
-        server = replaceSubstringOnce(server, ISLAND_SERVER_PORT, BOOTLOADER_SERVER_PORT);
+        server = replaceServerPort(server, BOOTLOADER_SERVER_PORT);
         char* paths[2] = {server, "linux"};
         server = concatenate(2, paths, "/");
         if (!strcmp(server, "")) {

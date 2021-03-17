@@ -40,6 +40,24 @@ int shouldMonkeyRun(char* windowsVersion) {
         return 0;
 }
 
+size_t countIpAddresses(PIP_ADAPTER_INFO pAdapterInfo) {
+    size_t count = 0;
+    while(pAdapterInfo) {
+        count += 1;
+        pAdapterInfo = pAdapterInfo->Next;
+    }
+
+    return count;
+}
+
+void freeIPs(char** IPs, size_t numIPs) {
+    for (size_t i = 0; i < numIPs; i++) {
+        free(IPs[i]);
+    }
+
+    free(IPs);
+}
+
 char** getIpAddresses(int *addrCount, char** hostname) {
     printf("Gathering network parameters.\n");
     int num_addresses = 0;
@@ -54,7 +72,7 @@ char** getIpAddresses(int *addrCount, char** hostname) {
     PFIXED_INFO pFixedInfo;
     ULONG FixedInfoSize = 0;
 
-    PIP_ADAPTER_INFO pAdapterInfo, pAdapt;
+    PIP_ADAPTER_INFO pAdapterInfo;
     DWORD AdapterInfoSize;
     PIP_ADDR_STRING pAddrStr;
 
@@ -74,6 +92,7 @@ char** getIpAddresses(int *addrCount, char** hostname) {
 
     Err = GetNetworkParams(pFixedInfo, &FixedInfoSize);
     if (Err == 0) {
+        free(*hostname);
         *hostname = (char *)malloc(strlen(pFixedInfo->HostName) + 1);
         if (NULL == *hostname) {
             free(pFixedInfo);
@@ -107,38 +126,38 @@ char** getIpAddresses(int *addrCount, char** hostname) {
         error("Memory allocation error\n");
     }
 
-    char** IPs = malloc(AdapterInfoSize);
     // Get actual adapter information
     Err = GetAdaptersInfo(pAdapterInfo, &AdapterInfoSize);
     if (Err != 0) {
-        free(IPs);
         printf("GetAdaptersInfo failed\n");
         return NULL;
     }
 
-    pAdapt = pAdapterInfo;
+    *addrCount = countIpAddresses(pAdapterInfo);
 
-    while (pAdapt) {
-        pAddrStr = &(pAdapt->IpAddressList);
+    char** IPs = malloc(*addrCount * sizeof(char*));
+
+    while (pAdapterInfo) {
+        pAddrStr = &(pAdapterInfo->IpAddressList);
         while (pAddrStr) {
             if (strcmp(pAddrStr->IpAddress.String, "0.0.0.0")) {
                 printf("IP Address. . . . . . . . . : %s\n", pAddrStr->IpAddress.String);
-                char * duplicate_string = malloc(strlen(pAddrStr->IpAddress.String));
-                if (NULL == duplicate_string) {
-                    free(IPs);
+
+                IPs[num_addresses] = strdup(pAddrStr->IpAddress.String);
+                if (IPs[num_addresses] == NULL) {
+                    freeIPs(IPs, num_addresses);
                     error("Memory allocation error\n");
                 }
-                strcpy(duplicate_string, pAddrStr->IpAddress.String);
-                IPs[num_addresses] = duplicate_string;
+
                 num_addresses += 1;
             }
+
             pAddrStr = pAddrStr->Next;
         }
 
-        pAdapt = pAdapt->Next;
+        pAdapterInfo = pAdapterInfo->Next;
     }
     free(pAdapterInfo);
-    *addrCount = num_addresses;
 
     return IPs;
 }
@@ -279,6 +298,8 @@ int ping_island(int argc, char * argv[]) {
         IPstring = '\0';
     }
 
+    freeIPs(IPs, addrCount);
+
     char* windowsVersion = getOsVersion();
     printf("Windows version: %s\n", windowsVersion);
 
@@ -332,7 +353,7 @@ int ping_island(int argc, char * argv[]) {
     char* requestContents;
     wchar_t* requestContentsW;
     if (server_i != 0) {
-        char * server = replaceSubstringOnce(argv[server_i], ISLAND_SERVER_PORT, "");
+        char * server = replaceServerPort(argv[server_i], NULL);
         serverW = (wchar_t*)malloc(sizeof(wchar_t) * (strlen(server) + 1));
         if (NULL == serverW) {
             free(server);
