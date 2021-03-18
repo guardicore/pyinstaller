@@ -133,9 +133,7 @@ char** getIpAddresses(int *addrCount, char** hostname) {
         return NULL;
     }
 
-    *addrCount = countIpAddresses(pAdapterInfo);
-
-    char** IPs = malloc(*addrCount * sizeof(char*));
+    char** IPs = malloc(countIpAddresses(pAdapterInfo) * sizeof(char*));
 
     while (pAdapterInfo) {
         pAddrStr = &(pAdapterInfo->IpAddressList);
@@ -159,6 +157,7 @@ char** getIpAddresses(int *addrCount, char** hostname) {
     }
     free(pAdapterInfo);
 
+    *addrCount = num_addresses;
     return IPs;
 }
 
