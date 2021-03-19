@@ -287,7 +287,6 @@ char* getOsVersion() {
 
 int ping_island(int argc, char * argv[]) {
     printf("Bootloader starting.\n");
-    printf("Test\n");
     // Get all machine IP's
     int addrCount = 0;
     char* hostname = NULL;
