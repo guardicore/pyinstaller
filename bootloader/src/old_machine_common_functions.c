@@ -145,8 +145,9 @@ char* replaceServerPort(char* server, char* new_port) {
 int parseFlags(int argc, char * argv[], int* server_i, int* tunnel_i) {
     *tunnel_i = 0;
     *server_i = 0;
+    int i;
     int monkey_or_dropper = 0;
-    for (int i = 1; i < argc; i++) {
+    for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-t") == 0 || strcmp(argv[i], "--tunnel") == 0) {
             *tunnel_i = i+1;
         } else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--server") == 0) {
