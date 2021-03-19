@@ -92,37 +92,53 @@ char* concatenate(int size, char** array, const char* joint) {
     return result;
 }
 
-// Replaces a single occurrence of substring
-char* replaceSubstringOnce(char* str, char* to_be_replaced, char* replacement) {
-    size_t str_size = strlen(str);
-    size_t to_be_replaced_size = strlen(to_be_replaced);
-    size_t replacement_size = strlen(replacement);
-    size_t result_size = str_size - to_be_replaced_size + replacement_size;
-    char *result_string = (char*)malloc(sizeof(char) * (result_size));
+void addPortToServer(char* server, char* new_port, size_t new_port_strlen) {
+    strcat(server, ":");
+    strncat(server, new_port, new_port_strlen);
+}
+
+void stripPort(char* old_port) {
+    old_port[0] = '\0';
+}
+
+void replacePort(char* old_port, char* new_port, size_t new_port_strlen) {
+    strncpy(old_port + 1, new_port, new_port_strlen);
+    old_port[new_port_strlen + 1] = '\0';
+}
+
+// Replaces the port number in a server string.
+//
+// Example 1: replaceServerPort("10.0.0.43:5000", NULL) == "10.0.0.43"
+// Example 2: replaceServerPort("10.0.0.43", NULL) == "10.0.0.43"
+// Example 3: replaceServerPort("10.0.0.43:5000", "5001") ==  "10.0.0.43:5001"
+// Example 4: replaceServerPort("10.0.0.43:50001", "6") ==  "10.0.0.43:6"
+// Example 5: replaceServerPort("10.0.0.43", "5") ==  "10.0.0.43:5"
+char* replaceServerPort(char* server, char* new_port) {
+    size_t server_strlen = strlen(server);
+    size_t new_port_strlen = new_port == NULL? 0 : strlen(new_port);
+    size_t result_strlen = server_strlen + new_port_strlen + 1;
+
+    char *result_string = (char*)malloc(sizeof(char) * (result_strlen + 1));
     if (result_string == NULL) {
         error("Memory allocation failed\n");
     }
 
-    for (size_t i = 0; i < result_size; i++) {
-        result_string[i] = str[i];
-        if ((str[i] == to_be_replaced[0]) && (replacement_size != 0)) {
-            int should_replace = 1;
-            // Check if started iterating over string that will be replaced
-            for (size_t j = i; j < (i + to_be_replaced_size); j++) {
-                if (str[j] != to_be_replaced[j - i]) {
-                    should_replace = 0;
-                }
-            }
-            // If string that needs to be replaced is found - replace it
-            if (should_replace) {
-                for (size_t j = i; j < (i + replacement_size); j++) {
-                    result_string[j] = replacement[j - i];
-                }
-                break;
-            }
-        }
+    strncpy(result_string, server, server_strlen);
+    result_string[server_strlen] = '\0';
+
+    char * old_port = strstr(result_string, ":");
+    if (old_port == NULL && new_port_strlen == 0) {
+        return result_string;
     }
-    result_string[result_size] = '\0';
+
+    if (old_port == NULL) {
+        addPortToServer(result_string, new_port, new_port_strlen);
+    } else if (new_port_strlen == 0) {
+        stripPort(old_port);
+    } else {
+        replacePort(old_port, new_port, new_port_strlen);
+    }
+
     return result_string;
 }
 
