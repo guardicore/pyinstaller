@@ -761,7 +761,7 @@ def build(ctx):
         # made in the configure phase.
         libs = ['DL', 'M', 'Z',  # 'z' - zlib, 'm' - math,
                 'THR']  # may be used on FreBSD
-        staticlibs = []
+        staticlibs = ['curl']
         if ctx.env.DEST_OS == 'aix':
             # link statically with zlib, case sensitive
             libs.remove('Z')
