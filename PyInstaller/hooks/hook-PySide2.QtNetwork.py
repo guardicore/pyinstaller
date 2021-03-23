@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-# Copyright (c) 2013-2020, PyInstaller Development Team.
+# Copyright (c) 2013-2021, PyInstaller Development Team.
 #
 # Distributed under the terms of the GNU General Public License (version 2
 # or later) with exception for distributing the bootloader.
@@ -16,7 +16,7 @@ from PyInstaller.utils.hooks.qt import add_qt5_dependencies, \
 from PyInstaller.compat import is_win
 
 # Only proceed if PySide2 can be imported.
-if pyside2_library_info.version:
+if pyside2_library_info.version is not None:
     hiddenimports, binaries, datas = add_qt5_dependencies(__file__)
 
     # Add libraries needed for SSL if these are available. See issue #3520, #4048.
@@ -24,10 +24,19 @@ if pyside2_library_info.version:
         from PySide2.QtNetwork import QSslSocket
         print(QSslSocket.supportsSsl())""")):
 
+        # PyPI version of PySide2 requires user to manually install SSL
+        # libraries into the PrefixPath. Other versions (e.g., the one
+        # provided by Conda) put the libraries into the BinariesPath.
+        # Accommodate both options by searching both locations...
+        locations = (
+            pyside2_library_info.location['BinariesPath'],
+            pyside2_library_info.location['PrefixPath']
+        )
+
         binaries = []
-        for dll in ('libeay32.dll', 'ssleay32.dll', 'libssl-1_1-x64.dll',
-                    'libcrypto-1_1-x64.dllx'):
-            dll_path = os.path.join(
-                pyside2_library_info.location['BinariesPath'], dll)
-            if os.path.exists(dll_path):
-                binaries.append((dll_path, '.'))
+        for location in locations:
+            for dll in ('libeay32.dll', 'ssleay32.dll', 'libssl-1_1-x64.dll',
+                        'libcrypto-1_1-x64.dll'):
+                dll_path = os.path.join(location, dll)
+                if os.path.exists(dll_path):
+                    binaries.append((dll_path, '.'))

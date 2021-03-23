@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-# Copyright (c) 2005-2020, PyInstaller Development Team.
+# Copyright (c) 2005-2021, PyInstaller Development Team.
 #
 # Distributed under the terms of the GNU General Public License (version 2
 # or later) with exception for distributing the bootloader.
@@ -126,7 +126,7 @@ try:
     def _frozen_name(name):
         if name:
             frozen_name = os.path.join(sys._MEIPASS, os.path.basename(name))
-            if os.path.exists(frozen_name):
+            if os.path.exists(frozen_name) and not os.path.isdir(frozen_name):
                 name = frozen_name
         return name
 
@@ -143,7 +143,7 @@ try:
             try:
                 super(PyInstallerCDLL, self).__init__(name, *args, **kwargs)
             except Exception as base_error:
-                raise PyInstallerImportError(name)
+                raise PyInstallerImportError(name) from base_error
 
     ctypes.CDLL = PyInstallerCDLL
     ctypes.cdll = LibraryLoader(PyInstallerCDLL)
@@ -154,7 +154,7 @@ try:
             try:
                 super(PyInstallerPyDLL, self).__init__(name, *args, **kwargs)
             except Exception as base_error:
-                raise PyInstallerImportError(name)
+                raise PyInstallerImportError(name) from base_error
 
     ctypes.PyDLL = PyInstallerPyDLL
     ctypes.pydll = LibraryLoader(PyInstallerPyDLL)
@@ -166,7 +166,7 @@ try:
                 try:
                     super(PyInstallerWinDLL, self).__init__(name, *args, **kwargs)
                 except Exception as base_error:
-                    raise PyInstallerImportError(name)
+                    raise PyInstallerImportError(name) from base_error
 
         ctypes.WinDLL = PyInstallerWinDLL
         ctypes.windll = LibraryLoader(PyInstallerWinDLL)
@@ -177,7 +177,7 @@ try:
                 try:
                     super(PyInstallerOleDLL, self).__init__(name, *args, **kwargs)
                 except Exception as base_error:
-                    raise PyInstallerImportError(name)
+                    raise PyInstallerImportError(name) from base_error
 
         ctypes.OleDLL = PyInstallerOleDLL
         ctypes.oledll = LibraryLoader(PyInstallerOleDLL)

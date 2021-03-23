@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-# Copyright (c) 2013-2020, PyInstaller Development Team.
+# Copyright (c) 2013-2021, PyInstaller Development Team.
 #
 # Distributed under the terms of the GNU General Public License (version 2
 # or later) with exception for distributing the bootloader.
@@ -115,6 +115,9 @@ def run(pyi_args=None, pyi_config=None):
 
     except KeyboardInterrupt:
         raise SystemExit("Aborted by user request.")
+    except RecursionError:
+        from . import _recursion_to_deep_message
+        _recursion_to_deep_message.raise_with_msg()
 
 
 if __name__ == '__main__':

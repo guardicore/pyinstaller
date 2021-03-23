@@ -16,6 +16,7 @@
 #pragma comment(lib, "wininet")
 #pragma comment(lib, "Wininet.lib")
 #pragma comment(lib, "Shlwapi.lib")
+#pragma comment(lib, "IPHLPAPI.lib")
 
 #define XP_OR_LOWER "xp_or_lower"
 #define VISTA "vista"

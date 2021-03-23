@@ -1,6 +1,6 @@
 /*
  * ****************************************************************************
- * Copyright (c) 2013-2020, PyInstaller Development Team.
+ * Copyright (c) 2013-2021, PyInstaller Development Team.
  *
  * Distributed under the terms of the GNU General Public License (version 2
  * or later) with exception for distributing the bootloader.
@@ -14,9 +14,8 @@
 /*
  * Functions to load, initialize and launch Python.
  */
-
-/* TODO: use safe string functions */
-#define _CRT_SECURE_NO_WARNINGS 1
+/* size of buffer to store the name of the Python DLL library */
+#define DLLNAME_LEN (64)
 
 #ifdef _WIN32
     #include <windows.h> /* HMODULE */
@@ -25,7 +24,6 @@
     #include <winsock.h> /* ntohl */
 #else
     #include <dlfcn.h>  /* dlerror */
-    #include <limits.h> /* PATH_MAX */
     #ifdef __FreeBSD__
 /* freebsd issue #188316 */
         #include <arpa/inet.h>  /* ntohl */
@@ -40,6 +38,7 @@
 #include <locale.h>  /* setlocale */
 
 /* PyInstaller headers. */
+#include "pyi_pythonlib.h"
 #include "pyi_global.h"
 #include "pyi_path.h"
 #include "pyi_archive.h"
@@ -55,24 +54,26 @@ pyi_pylib_load(ARCHIVE_STATUS *status)
 {
     dylib_t dll;
     char dllpath[PATH_MAX];
-    char dllname[64];
-    char *p;
-    int len;
+    char dllname[DLLNAME_LEN];
+    size_t len;
 
 /*
- * On AIX Append the shared object member to the library path
- * to make it look like this:
- *   libpython2.6.a(libpython2.6.so)
+ * On AIX Append the name of shared object library path might be an archive.
+ * In that case, modify the name to make it look like:
+ *   libpython3.6.a(libpython3.6.so)
+ * Shared object names ending with .so may be used asis.
  */
 #ifdef AIX
     /*
-     * Determine if shared lib is in libpython?.?.so or libpython?.?.a(libpython?.?.so) format
+     * Determine if shared lib is in libpython?.?.so or
+     * libpython?.?.a(libpython?.?.so) format
      */
+    char *p;
     if ((p = strrchr(status->cookie.pylibname, '.')) != NULL && strcmp(p, ".a") == 0) {
       /*
        * On AIX 'ar' archives are used for both static and shared object.
        * To load a shared object from a library, it should be loaded like this:
-       *   dlopen("libpython2.6.a(libpython2.6.so)", RTLD_MEMBER)
+       *   dlopen("libpythonX.Y.a(libpythonX.Y.so)", RTLD_MEMBER)
        */
       uint32_t pyvers_major;
       uint32_t pyvers_minor;
@@ -80,20 +81,20 @@ pyi_pylib_load(ARCHIVE_STATUS *status)
       pyvers_major = pyvers / 10;
       pyvers_minor = pyvers % 10;
 
-      len = snprintf(dllname, 64,
+      len = snprintf(dllname, DLLNAME_LEN,
               "libpython%01d.%01d.a(libpython%01d.%01d.so)",
               pyvers_major, pyvers_minor, pyvers_major, pyvers_minor);
     }
     else {
-      strncpy(dllname, status->cookie.pylibname, 64);
+      len = snprintf(dllname, DLLNAME_LEN, "%s", status->cookie.pylibname);
     }
 #else
-    len = 0;
-    strncpy(dllname, status->cookie.pylibname, 64);
+    len = snprintf(dllname, DLLNAME_LEN, "%s", status->cookie.pylibname);
 #endif
 
-    if (len >= 64 || dllname[64-1] != '\0') {
-        FATALERROR("DLL name length exceeds buffer\n");
+    if (len >= DLLNAME_LEN) {
+        FATALERROR("Reported length (%d) of DLL name (%s) length exceeds buffer[%d] space\n",
+                   len, status->cookie.pylibname, DLLNAME_LEN);
         return -1;
     }
 
@@ -105,9 +106,13 @@ pyi_pylib_load(ARCHIVE_STATUS *status)
      */
     if (status->has_temp_directory) {
         char ucrtpath[PATH_MAX];
-        pyi_path_join(ucrtpath, status->temppath, "ucrtbase.dll");
+        if (pyi_path_join(ucrtpath,
+                          status->temppath, "ucrtbase.dll") == NULL) {
+            FATALERROR("Path of ucrtbase.dll (%s) length exceeds "
+                       "buffer[%d] space\n", status->temppath, PATH_MAX);
+        };
         if (pyi_path_exists(ucrtpath)) {
-            VS("LOADER: ucrtbase.dll is exists: %s\n", ucrtpath);
+            VS("LOADER: ucrtbase.dll found: %s\n", ucrtpath);
             pyi_utils_dlopen(ucrtpath);
         }
     }
@@ -117,7 +122,10 @@ pyi_pylib_load(ARCHIVE_STATUS *status)
      * Look for Python library in homepath or temppath.
      * It depends on the value of mainpath.
      */
-    pyi_path_join(dllpath, status->mainpath, dllname);
+    if (pyi_path_join(dllpath, status->mainpath, dllname) == NULL) {
+        FATALERROR("Path of DLL (%s) length exceeds buffer[%d] space\n",
+                   status->mainpath, PATH_MAX);
+    };
 
     VS("LOADER: Python library: %s\n", dllpath);
 
@@ -191,7 +199,7 @@ pyi_pylib_set_runtime_opts(ARCHIVE_STATUS *status)
     *PI_Py_NoUserSiteDirectory = 1;
     /* This flag ensures PYTHONPATH and PYTHONHOME are ignored by Python. */
     *PI_Py_IgnoreEnvironmentFlag = 1;
-    /* Disalbe verbose imports by default. */
+    /* Disable verbose imports by default. */
     *PI_Py_VerboseFlag = 0;
 
     /* Override some runtime options by custom values from PKG archive.
@@ -249,7 +257,13 @@ pyi_free_wargv(wchar_t ** wargv)
     wchar_t ** arg = wargv;
 
     while (arg[0]) {
+#ifdef _WIN32
+        // allocated using `malloc` in pyi_win32_wargv_from_utf8
         free(arg[0]);
+#else
+        // allocated using Py_DecodeLocale in pyi_wargv_from_argv
+        PI_PyMem_RawFree(arg[0]);
+#endif
         arg++;
     }
     free(wargv);
@@ -363,7 +377,7 @@ pyi_locale_char2wchar(wchar_t * dst, char * src, size_t len)
         return NULL;
     }
     wcsncpy(dst, buffer, len);
-    free(buffer);
+    PI_PyMem_RawFree(buffer);
     return dst;
 #endif /* ifdef _WIN32 */
 }
@@ -410,11 +424,15 @@ pyi_pylib_start_python(ARCHIVE_STATUS *status)
 
     /* Set sys.path */
     /* sys.path = [base_library, mainpath] */
-    strncpy(pypath, status->mainpath, strlen(status->mainpath));
-    strncat(pypath, PYI_SEPSTR, strlen(PYI_SEPSTR));
-    strncat(pypath, "base_library.zip", strlen("base_library.zip"));
-    strncat(pypath, PYI_PATHSEPSTR, strlen(PYI_PATHSEPSTR));
-    strncat(pypath, status->mainpath, strlen(status->mainpath));
+    if (snprintf(pypath, sizeof pypath, "%s%cbase_library.zip%c%s",
+                 status->mainpath, PYI_SEP, PYI_PATHSEP, status->mainpath)
+        >= sizeof pypath) {
+        // This should never happen, since mainpath is < PATH_MAX and pypath is
+        // huge enough
+        FATALERROR("sys.path (based on %s) exceeds buffer[%d] space\n",
+                   status->mainpath, sizeof pypath);
+        return -1;
+    }
 
     /*
      * E must set sys.path to have base_library.zip before
@@ -601,7 +619,7 @@ int
 pyi_pylib_install_zlib(ARCHIVE_STATUS *status, TOC *ptoc)
 {
     int rc = 0;
-    int zlibpos = status->pkgstart + ntohl(ptoc->pos);
+    size_t zlibpos = status->pkgstart + ntohl(ptoc->pos);
     PyObject * sys_path, *zlib_entry, *archivename_obj;
 
     /* Note that sys.path contains PyUnicode on py3. Ensure
@@ -619,7 +637,7 @@ pyi_pylib_install_zlib(ARCHIVE_STATUS *status, TOC *ptoc)
      */
     archivename_obj = PI_PyUnicode_DecodeFSDefault(status->archivename);
 #endif
-    zlib_entry = PI_PyUnicode_FromFormat("%U?%d", archivename_obj, zlibpos);
+    zlib_entry = PI_PyUnicode_FromFormat("%U?%zu", archivename_obj, zlibpos);
     PI_Py_DecRef(archivename_obj);
 
     sys_path = PI_PySys_GetObject("path");
@@ -674,6 +692,30 @@ pyi_pylib_finalize(ARCHIVE_STATUS *status)
      * loaded then calling this function might cause some segmentation faults.
      */
     if (status->is_pylib_loaded == true) {
+        #ifndef WINDOWED
+            /* 
+             * We need to manually flush the buffers because otherwise there can be errors.
+             * The native python interpreter flushes buffers before calling Py_Finalize,
+             * so we need to manually do the same. See isse #4908.
+             */
+
+            VS("LOADER: Manually flushing stdout and stderr\n");
+
+            /* sys.stdout.flush() */
+            PI_PyRun_SimpleString(
+                "import sys; sys.stdout.flush(); \
+                (sys.__stdout__.flush if sys.__stdout__ \
+                is not sys.stdout else (lambda: None))()");
+
+            /* sys.stderr.flush() */
+            PI_PyRun_SimpleString(
+                "import sys; sys.stderr.flush(); \
+                (sys.__stderr__.flush if sys.__stderr__ \
+                is not sys.stderr else (lambda: None))()");
+
+        #endif
+
+        /* Finalize the interpreter. This function call calls all of the atexit functions. */
         VS("LOADER: Cleaning up Python interpreter.\n");
         PI_Py_Finalize();
     }

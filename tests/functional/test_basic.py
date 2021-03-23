@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #-----------------------------------------------------------------------------
-# Copyright (c) 2005-2020, PyInstaller Development Team.
+# Copyright (c) 2005-2021, PyInstaller Development Team.
 #
 # Distributed under the terms of the GNU General Public License (version 2
 # or later) with exception for distributing the bootloader.
@@ -23,17 +23,15 @@ import pytest
 # Local imports
 # -------------
 from PyInstaller.compat import is_darwin, is_win, is_py37
-from PyInstaller.utils.tests import importorskip, skipif, skipif_win, \
-    skipif_winorosx, skipif_notwin, skipif_notosx, skipif_no_compiler, \
-    skipif_notlinux, xfail
-from PyInstaller.utils.hooks import is_module_satisfies
+from PyInstaller.utils.tests import importorskip, skipif, \
+    skipif_no_compiler, xfail
 
 
 def test_run_from_path_environ(pyi_builder):
     pyi_builder.test_script('pyi_absolute_python_path.py', run_from_path=True)
 
 
-@skipif_winorosx
+@pytest.mark.linux
 def test_absolute_ld_library_path(pyi_builder):
     pyi_builder.test_script('pyi_absolute_ld_library_path.py')
 
@@ -42,7 +40,7 @@ def test_absolute_python_path(pyi_builder):
     pyi_builder.test_script('pyi_absolute_python_path.py')
 
 
-@skipif_notlinux
+@pytest.mark.linux
 @skipif(not os.path.exists('/proc/self/status'),
         reason='/proc/self/status does not exist')
 @pytest.mark.parametrize("symlink_name",
@@ -162,17 +160,16 @@ def test_email(pyi_builder):
         """)
 
 
-@skipif(is_module_satisfies('Crypto >= 3'), reason='Bytecode encryption is not '
-        'compatible with pycryptodome.')
-@importorskip('Crypto')
+@importorskip('tinyaes')
 def test_feature_crypto(pyi_builder):
     pyi_builder.test_source(
         """
         from pyimod00_crypto_key import key
         from pyimod02_archive import CRYPT_BLOCK_SIZE
 
-        # Issue 1663: Crypto feature caused issues when using PyCrypto module.
-        import Crypto.Cipher.AES
+        # Test against issue #1663: importing a package in the bootstrap
+        # phase should not interfere with subsequent imports.
+        import tinyaes
 
         assert type(key) is str
         # The test runner uses 'test_key' as key.
@@ -334,7 +331,9 @@ def test_option_w_ignore(pyi_builder, monkeypatch, capsys):
     _, err = capsys.readouterr()
     assert "'import warnings' failed" not in err
 
-@skipif_win
+
+@pytest.mark.darwin
+@pytest.mark.linux
 def test_python_makefile(pyi_builder):
     pyi_builder.test_script('pyi_python_makefile.py')
 
@@ -397,15 +396,15 @@ def test_time_module(pyi_builder):
         """)
 
 
-@skipif_win
+@pytest.mark.darwin
+@pytest.mark.linux
 def test_time_module_localized(pyi_builder, monkeypatch):
     # This checks that functions 'time.ctime()' and 'time.strptime()'
     # use the same locale. There was an issue with bootloader where
     # every function was using different locale:
     # time.ctime was using 'C'
     # time.strptime was using 'xx_YY' from the environment.
-    lang = 'cs_CZ' if is_darwin else 'cs_CZ.UTF-8'
-    monkeypatch.setenv('LC_ALL', lang)
+    monkeypatch.setenv('LC_ALL', 'cs_CZ.UTF-8')
     pyi_builder.test_source(
         """
         import time
@@ -458,7 +457,7 @@ def test_argument(pyi_builder):
     pyi_builder.test_source(
         '''
         import sys
-        assert sys.argv[1] == "--argument", "sys.argv[1] was %s, expected %r" % (sys.argv[1], "--argument")
+        assert sys.argv[1] == "--argument", "sys.argv[1] was %r, expected %r" % (sys.argv[1], "--argument")
         ''',
         app_args=["--argument"])
 
@@ -490,6 +489,7 @@ def test_pywin32_comext(pyi_builder):
 
 
 @importorskip('win32ui')
+@xfail(reason="https://github.com/mhammond/pywin32/issues/1614")
 def test_pywin32_win32ui(pyi_builder):
     pyi_builder.test_source(
         """
@@ -502,7 +502,7 @@ def test_pywin32_win32ui(pyi_builder):
         """)
 
 
-@skipif_notwin
+@pytest.mark.win32
 def test_renamed_exe(pyi_builder):
     _old_find_executables = pyi_builder._find_executables
     def _find_executables(name):
@@ -521,9 +521,11 @@ def test_renamed_exe(pyi_builder):
 def test_spec_with_utf8(pyi_builder_spec):
     pyi_builder_spec.test_spec('spec-with-utf8.spec')
 
-@skipif_notosx
+
+@pytest.mark.darwin
 def test_osx_override_info_plist(pyi_builder_spec):
     pyi_builder_spec.test_spec('pyi_osx_override_info_plist.spec')
+
 
 def test_hook_collect_submodules(pyi_builder, script_dir):
     # This is designed to test the operation of

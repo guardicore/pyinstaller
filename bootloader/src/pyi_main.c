@@ -1,6 +1,6 @@
 /*
  * ****************************************************************************
- * Copyright (c) 2013-2020, PyInstaller Development Team.
+ * Copyright (c) 2013-2021, PyInstaller Development Team.
  *
  * Distributed under the terms of the GNU General Public License (version 2
  * or later) with exception for distributing the bootloader.
@@ -15,21 +15,21 @@
  * Bootloader for a packed executable.
  */
 
-/* TODO: use safe string functions */
-#define _CRT_SECURE_NO_WARNINGS 1
-
 #ifdef _WIN32
     #include <windows.h>
     #include <wchar.h>
-#else
-    #include <limits.h>  /* PATH_MAX */
 #endif
 #include <stdio.h>  /* FILE */
 #include <stdlib.h> /* calloc */
 #include <string.h> /* memset */
 
+#if defined(__linux__)
+    #include <sys/prctl.h> /* prctl() */
+#endif
+
 /* PyInstaller headers. */
-#include "pyi_global.h"  /* PATH_MAX for win32 */
+#include "pyi_main.h"
+#include "pyi_global.h"  /* PATH_MAX */
 #include "pyi_path.h"
 #include "pyi_archive.h"
 #include "pyi_utils.h"
@@ -49,7 +49,10 @@ pyi_main(int argc, char * argv[])
     char archivefile[PATH_MAX];
     int rc = 0;
     char *extractionpath = NULL;
-    wchar_t * dllpath_w;
+
+#if defined(__linux__)
+    char *processname = NULL;
+#endif  /* defined(__linux__) */
 
 #ifdef _MSC_VER
     /* Visual C runtime incorrectly buffers stderr */
@@ -66,18 +69,15 @@ pyi_main(int argc, char * argv[])
 
     VS("PyInstaller Bootloader 3.x\n");
 
-    /* TODO create special function to allocate memory for archive status pyi_arch_status_alloc_memory(archive_status); */
-    archive_status = (ARCHIVE_STATUS *) calloc(1, sizeof(ARCHIVE_STATUS));
-
+    archive_status = pyi_arch_status_new(archive_status);
     if (archive_status == NULL) {
-        FATAL_PERROR("calloc", "Cannot allocate memory for ARCHIVE_STATUS\n");
         return -1;
-
     }
-
-    pyi_path_executable(executable, argv[0]);
-    pyi_path_archivefile(archivefile, executable);
-    pyi_path_homepath(homepath, executable);
+    if ((! pyi_path_executable(executable, argv[0])) ||
+        (! pyi_path_archivefile(archivefile, executable)) ||
+        (! pyi_path_homepath(homepath, executable))) {
+        return -1;
+    }
 
     /* For the curious:
      * On Windows, the UTF-8 form of MEIPASS2 is passed to pyi_setenv, which
@@ -101,13 +101,29 @@ pyi_main(int argc, char * argv[])
 
     VS("LOADER: _MEIPASS2 is %s\n", (extractionpath ? extractionpath : "NULL"));
 
-    if (pyi_arch_setup(archive_status, homepath, &executable[strlen(homepath)])) {
-        if (pyi_arch_setup(archive_status, homepath, &archivefile[strlen(homepath)])) {
+    if ((! pyi_arch_setup(archive_status, executable)) &&
+        (! pyi_arch_setup(archive_status, archivefile))) {
             FATALERROR("Cannot open self %s or archive %s\n",
                        executable, archivefile);
             return -1;
-        }
     }
+
+#if defined(__linux__)
+
+    /* Set process name on linux. The environment variable is set by
+       parent launcher process. */
+    processname = pyi_getenv("_PYI_PROCNAME");
+    if (processname) {
+        VS("LOADER: restoring linux process name from _PYI_PROCNAME: %s\n", processname);
+        if (prctl(PR_SET_NAME, processname, 0, 0)) {
+            FATALERROR("LOADER: failed to set linux process name!\n");
+            return -1;
+        }
+        free(processname);
+    }
+    pyi_unsetenv("_PYI_PROCNAME");
+
+#endif  /* defined(__linux__) */
 
     /* These are used only in pyi_pylib_set_sys_argv, which converts to wchar_t */
     archive_status->argc = argc;
@@ -127,6 +143,7 @@ pyi_main(int argc, char * argv[])
 
     if (extractionpath) {
         /* Add extraction folder to DLL search path */
+        wchar_t * dllpath_w;
         dllpath_w = pyi_win32_utils_from_utf8(NULL, extractionpath, 0);
         SetDllDirectory(dllpath_w);
         VS("LOADER: SetDllDirectory(%s)\n", extractionpath);
@@ -141,8 +158,8 @@ pyi_main(int argc, char * argv[])
          *  we pass it through status variable
          */
         if (strcmp(homepath, extractionpath) != 0) {
-            strncpy(archive_status->temppath, extractionpath, PATH_MAX);
-            if (archive_status->temppath[PATH_MAX-1] != '\0') {
+            if (snprintf(archive_status->temppath, PATH_MAX,
+                         "%s", extractionpath) >= PATH_MAX) {
                 VS("LOADER: temppath exceeds PATH_MAX\n");
                 return -1;
             }
@@ -161,6 +178,9 @@ pyi_main(int argc, char * argv[])
 
     }
     else {
+#if defined(__linux__)
+        char tmp_processname[16]; /* 16 bytes as per prctl() man page */
+#endif  /* defined(__linux__) */
 
         /* status->temppath is created if necessary. */
         if (pyi_launch_extract_binaries(archive_status)) {
@@ -177,6 +197,16 @@ pyi_main(int argc, char * argv[])
                    0 ? archive_status->temppath : homepath);
 
         VS("LOADER: set _MEIPASS2 to %s\n", pyi_getenv("_MEIPASS2"));
+
+#if defined(__linux__)
+
+        /* Pass the process name to child via environment variable. */
+        if (!prctl(PR_GET_NAME, tmp_processname, 0, 0)) {
+            VS("LOADER: linux: storing process name into _PYI_PROCNAME: %s\n", tmp_processname);
+            pyi_setenv("_PYI_PROCNAME", tmp_processname);
+        }
+
+#endif  /* defined(__linux__) */
 
         if (pyi_utils_set_environment(archive_status) == -1) {
             return -1;
@@ -195,7 +225,7 @@ pyi_main(int argc, char * argv[])
         if (archive_status->has_temp_directory == true) {
             pyi_remove_temp_path(archive_status->temppath);
         }
-        pyi_arch_status_free_memory(archive_status);
+        pyi_arch_status_free(archive_status);
 
     }
     return rc;

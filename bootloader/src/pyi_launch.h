@@ -1,6 +1,6 @@
 /*
  * ****************************************************************************
- * Copyright (c) 2013-2020, PyInstaller Development Team.
+ * Copyright (c) 2013-2021, PyInstaller Development Team.
  *
  * Distributed under the terms of the GNU General Public License (version 2
  * or later) with exception for distributing the bootloader.
@@ -16,6 +16,8 @@
  */
 #ifndef PYI_LAUNCH_H
 #define PYI_LAUNCH_H
+
+#include "pyi_archive.h"
 
 /*****************************************************************
 * The following 4 entries are for applications which may need to
